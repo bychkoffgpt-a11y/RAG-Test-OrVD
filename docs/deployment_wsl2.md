@@ -110,6 +110,10 @@ sha256sum models/llm/qwen2.5-7b-instruct-q4_k_m.gguf
 ## 4.4. Подготовьте документы
 - Документация ЦСВ АНС: `data/inbox/csv_ans_docs`
 - Нормативные документы: `data/inbox/internal_regulations`
+- Поддерживаемые форматы: `.doc`, `.docx`, `.pdf`
+- Для PDF нужен текстовый слой (сканы без текста заранее обрабатывайте OCR отдельно)
+
+Подробные эксплуатационные правила подготовки: [`docs/operations.md`](operations.md#подготовка-документов-к-индексации).
 
 ---
 
@@ -187,6 +191,8 @@ docker compose logs --tail=200 loki
 ## 8.2. Обновление корпуса B
 1. Загрузить/заменить файлы в `data/inbox/internal_regulations`.
 2. Выполнить: `docker compose run --rm ingest-b`.
+
+> Перед запуском индексации следуйте чеклисту подготовки в [`docs/operations.md`](operations.md#подготовка-документов-к-индексации).
 
 ## 8.3. Бэкап
 ```bash
