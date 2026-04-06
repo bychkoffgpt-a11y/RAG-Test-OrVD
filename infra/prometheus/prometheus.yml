@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'support-api'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['support-api:8000']
+
+  - job_name: 'qdrant'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['qdrant:6333']
+
+  - job_name: 'llm-server'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['llm-server:8080']
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
