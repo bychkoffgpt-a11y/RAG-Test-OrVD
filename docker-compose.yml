@@ -1,0 +1,218 @@
+version: "3.9"
+
+name: csv-ans-support-bot
+
+networks:
+  rag_net:
+    driver: bridge
+
+volumes:
+  qdrant_data:
+  postgres_data:
+  grafana_data:
+  loki_data:
+  prometheus_data:
+  openwebui_data:
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-support}
+      POSTGRES_USER: ${POSTGRES_USER:-support_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-support_user} -d ${POSTGRES_DB:-support}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [rag_net]
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    container_name: qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - ./infra/qdrant/config.yaml:/qdrant/config/production.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:6333/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "6333:6333"
+    networks: [rag_net]
+
+  llm-server:
+    image: ghcr.io/ggerganov/llama.cpp:server-cuda
+    container_name: llm-server
+    restart: unless-stopped
+    command: >
+      -m /models/llm/${LLM_MODEL_FILE}
+      --host 0.0.0.0
+      --port 8080
+      -c ${LLM_CTX_SIZE:-8192}
+      -ngl ${LLM_N_GPU_LAYERS:-99}
+      --parallel ${LLM_PARALLEL:-2}
+      --threads ${LLM_THREADS:-8}
+      --cont-batching
+    volumes:
+      - ./models:/models:ro
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+    networks: [rag_net]
+
+  support-api:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: support-api
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      APP_ENV: prod
+      POSTGRES_DSN: postgresql://${POSTGRES_USER:-support_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-support}
+      QDRANT_URL: http://qdrant:6333
+      LLM_BASE_URL: http://llm-server:8080
+      FILE_STORAGE_ROOT: /data
+      LOKI_URL: http://loki:3100
+      PROMETHEUS_METRICS_ENABLED: "true"
+    volumes:
+      - ./data:/data
+      - ./models:/models:ro
+      - ./app/logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      llm-server:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    networks: [rag_net]
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
+    restart: unless-stopped
+    environment:
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      ENABLE_SIGNUP: "false"
+      OPENAI_API_BASE_URL: http://support-api:8000/v1
+      OPENAI_API_KEY: ${WEBUI_API_KEY}
+    volumes:
+      - openwebui_data:/app/backend/data
+    depends_on: [support-api]
+    ports:
+      - "3000:8080"
+    networks: [rag_net]
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [rag_net]
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [prometheus, loki]
+    ports:
+      - "3101:3000"
+    networks: [rag_net]
+
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./infra/loki/config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    networks: [rag_net]
+
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./infra/promtail/config.yaml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./app/logs:/app/logs:ro
+    depends_on: [loki]
+    networks: [rag_net]
+
+  ingest-a:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    profiles: ["manual"]
+    env_file: [.env]
+    command: ["python", "-m", "src.ingest.pipeline_a", "--input", "/data/inbox/csv_ans_docs"]
+    volumes:
+      - ./data:/data
+      - ./models:/models:ro
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks: [rag_net]
+
+  ingest-b:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    profiles: ["manual"]
+    env_file: [.env]
+    command: ["python", "-m", "src.ingest.pipeline_b", "--input", "/data/inbox/internal_regulations"]
+    volumes:
+      - ./data:/data
+      - ./models:/models:ro
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks: [rag_net]

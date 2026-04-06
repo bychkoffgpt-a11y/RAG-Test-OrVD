@@ -1,0 +1,6 @@
+log_level: INFO
+storage:
+  optimizers:
+    default_segment_number: 2
+service:
+  http_port: 6333
