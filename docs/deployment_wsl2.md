@@ -32,7 +32,7 @@ sudo apt install -y git curl jq unzip
 
 3. Клонируйте репозиторий:
 ```bash
-git clone <URL_ВАШЕГО_РЕПОЗИТОРИЯ>
+git clone https://github.com/bychkoffgpt-a11y/RAG-Test-OrVD
 cd RAG-Test-OrVD
 ```
 
