@@ -6,4 +6,4 @@ mkdir -p data/inbox/csv_ans_docs data/inbox/internal_regulations data/processed/
 mkdir -p models/llm models/embeddings models/reranker
 
 echo "[OK] Базовая структура подготовлена."
-echo "[INFO] Заполните .env и поместите модели в models/."
+echo "[INFO] Заполните .env и поместите модели в models/ согласно docs/model_registry.md."

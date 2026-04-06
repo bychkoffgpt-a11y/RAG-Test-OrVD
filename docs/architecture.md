@@ -27,6 +27,12 @@
   - chunking, эмбеддинги, upsert в Qdrant;
   - запись метаданных в PostgreSQL.
 
+## Модельный стек (зафиксирован)
+- LLM: `qwen2.5-7b-instruct-q4_k_m.gguf` (через llama.cpp server).
+- Embeddings: `BAAI/bge-m3`.
+- Reranker: `BAAI/bge-reranker-v2-m3`.
+- Источник правды по артефактам и правилам версионирования: [Реестр моделей](model_registry.md).
+
 ## Разделение данных
 - Коллекция Qdrant `csv_ans_docs`.
 - Коллекция Qdrant `internal_regulations`.

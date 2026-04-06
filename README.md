@@ -2,6 +2,11 @@
 
 Репозиторий содержит полностью локальный стек (без интернета и облаков) для запуска чат-бота поддержки на базе документации ЦСВ АНС и внутренних нормативных документов.
 
+## Зафиксированный стек моделей
+- LLM: `qwen2.5-7b-instruct-q4_k_m.gguf`
+- Embeddings: `BAAI/bge-m3` (локально в `models/embeddings/bge-m3/`)
+- Reranker: `BAAI/bge-reranker-v2-m3` (локально в `models/reranker/bge-reranker-v2-m3/`)
+
 ## Состав решения
 - Open WebUI (чат-интерфейс)
 - FastAPI (кастомный backend)
@@ -20,5 +25,6 @@ docker compose up -d
 
 ## Документация
 - [Архитектура](docs/architecture.md)
+- [Реестр моделей](docs/model_registry.md)
 - [Развёртывание в WSL2 (подробно)](docs/deployment_wsl2.md)
 - [Эксплуатация](docs/operations.md)
