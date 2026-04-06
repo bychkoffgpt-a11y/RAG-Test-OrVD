@@ -77,12 +77,37 @@ docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 
 > Для air-gap среды образы и модели должны быть заранее загружены в локальное хранилище/архив.
 
-## 4.1. Поместите модели
-- LLM (GGUF): `models/llm/<имя_модели>.gguf`
-- Embeddings: `models/embeddings/bge-m3/`
-- Reranker: `models/reranker/bge-reranker-v2-m3/`
+## 4.1. Зафиксируйте версии моделей
 
-## 4.2. Подготовьте документы
+Используйте только следующий стек:
+- LLM (GGUF): `qwen2.5-7b-instruct-q4_k_m.gguf`
+- Embeddings: `BAAI/bge-m3`
+- Reranker: `BAAI/bge-reranker-v2-m3`
+
+Подробная матрица артефактов: [`docs/model_registry.md`](model_registry.md).
+
+## 4.2. Подготовьте и поместите модели
+
+Разместите артефакты строго по путям:
+- `models/llm/qwen2.5-7b-instruct-q4_k_m.gguf`
+- `models/embeddings/bge-m3/`
+- `models/reranker/bge-reranker-v2-m3/`
+
+> В этом репозитории нет автоскачивания моделей: загрузка выполняется заранее во внутренний офлайн-архив/registry, затем артефакты копируются в `models/`.
+
+## 4.3. (Рекомендуется) Проверка контрольных сумм
+
+1. Заполните в `.env` значения:
+   - `LLM_MODEL_SHA256`
+   - `EMBEDDING_MODEL_SHA256`
+   - `RERANKER_MODEL_SHA256`
+2. Проверьте SHA256 локально:
+```bash
+sha256sum models/llm/qwen2.5-7b-instruct-q4_k_m.gguf
+```
+3. Сверьте с эталонными суммами из вашего доверенного офлайн-источника.
+
+## 4.4. Подготовьте документы
 - Документация ЦСВ АНС: `data/inbox/csv_ans_docs`
 - Нормативные документы: `data/inbox/internal_regulations`
 
