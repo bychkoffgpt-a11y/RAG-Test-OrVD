@@ -54,6 +54,18 @@ require_model_file() {
   ok "Найден файл модели: $file"
 }
 
+require_nonempty_wheelhouse() {
+  local dir="$1"
+
+  require_dir "$dir"
+
+  if ! find "$dir" -mindepth 1 -maxdepth 1 -type f -name '*.whl' -print -quit | grep -q .; then
+    fail "В каталоге wheelhouse нет *.whl: $dir. Без wheel-пакетов сборка support-api перейдет в онлайн-режим (PyPI) и может упасть в закрытом контуре. Подготовьте wheels заранее (см. docs/operations.md, раздел офлайн-сборки)."
+  fi
+
+  ok "Найдены wheel-пакеты для офлайн-сборки: $dir"
+}
+
 require_compose_env_refs() {
   local key="$1"
   local pattern="\\$\\{${key}([:-][^}]*)?}"
@@ -103,6 +115,7 @@ require_dir "$ROOT_DIR/models"
 require_dir "$ROOT_DIR/models/llm"
 require_dir "$ROOT_DIR/models/embeddings"
 require_dir "$ROOT_DIR/models/reranker"
+require_nonempty_wheelhouse "$ROOT_DIR/app/wheels"
 require_dir "$ROOT_DIR/data/inbox/csv_ans_docs"
 require_dir "$ROOT_DIR/data/inbox/internal_regulations"
 

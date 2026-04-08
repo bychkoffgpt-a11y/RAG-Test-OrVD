@@ -12,6 +12,9 @@
 ./scripts/preflight_check.sh
 ```
 
+Проверка включает контроль `app/wheels`: в каталоге должен быть хотя бы один `*.whl`.  
+Если wheelhouse пустой (например, только `.gitkeep`), скрипт завершится ошибкой, чтобы предотвратить неявную онлайн-установку зависимостей из PyPI.
+
 Если Docker временно недоступен в shell (например, в CI lint-этапе), можно выполнить только файловую/ENV-проверку:
 ```bash
 ./scripts/preflight_check.sh --skip-docker
@@ -75,6 +78,14 @@ docker compose up -d --build
 ### Вариант 1 — онлайн-сборка (по умолчанию)
 - При `docker compose build`/`up --build` используется `pip install` с повышенными retry/timeout.
 - Этот режим требует доступ к PyPI.
+- Перед установкой выполняется TLS precheck к `pypi.org:443`; при проблемах выводится явная диагностика по сети/сертификатам.
+- Можно использовать кастомный индекс/зеркало через build args:
+  ```bash
+  docker compose build support-api \
+    --build-arg PIP_INDEX_URL=https://pypi.org/simple \
+    --build-arg PIP_EXTRA_INDEX_URL= \
+    --build-arg PIP_TRUSTED_HOST=
+  ```
 
 ### Вариант 2 — полностью офлайн (рекомендуется для закрытого контура)
 1. На машине с интернетом подготовить wheelhouse:
