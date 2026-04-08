@@ -59,3 +59,18 @@ docker compose up -d
 - [Реестр моделей](docs/model_registry.md)
 - [Развёртывание в WSL2 (подробно)](docs/deployment_wsl2.md)
 - [Эксплуатация](docs/operations.md)
+
+
+## Автотесты
+Базовый стек автотестов:
+- `pytest`
+- `pytest-cov`
+
+Локальный запуск всех автотестов:
+```bash
+cd app
+pip install -e .[dev]
+pytest -q --cov=src --cov-report=term-missing
+```
+
+Перед merge в GitHub необходимо запускать **все** автотесты локально и проверять, что CI `tests` в Pull Request зелёный.
