@@ -17,6 +17,22 @@
 ./scripts/preflight_check.sh --skip-docker
 ```
 
+## Автотесты и merge-политика
+
+### Локальный запуск (обязательно перед merge)
+```bash
+cd app
+pip install -e .[dev]
+pytest -q --cov=src --cov-report=term-missing
+```
+
+### Что считается «перед merge в GitHub»
+- Ветка обновлена и не конфликтует с целевой.
+- Локально выполнен полный запуск автотестов без падений.
+- В PR прошёл GitHub Actions workflow `tests`.
+
+Рекомендация: включить в настройках репозитория обязательный status check `tests` для ветки `main`.
+
 ## Базовые команды
 - Запуск: `docker compose up -d`
 - Остановка: `docker compose down`
