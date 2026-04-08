@@ -33,6 +33,19 @@ cp .env.example .env
 docker compose up -d
 ```
 
+## Полный перезапуск после обновления проекта
+```bash
+docker compose down
+git fetch --all --prune
+git pull --ff-only
+docker compose up -d --build
+```
+
+Если нужен «чистый» старт без существующих данных, используйте `docker compose down -v` перед запуском.
+
+## Офлайн-сборка Python-зависимостей
+Для закрытого контура без доступа к PyPI используйте локальный wheelhouse (`app/wheels`) и инструкции в [`docs/operations.md`](docs/operations.md#устойчивость-сборки-python-зависимостей-и-офлайн-режим).
+
 ## Документация
 - [Архитектура](docs/architecture.md)
 - [Реестр моделей](docs/model_registry.md)
