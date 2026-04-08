@@ -56,6 +56,11 @@ cp .env.example .env
 
 6. Заполните `.env` актуальными паролями.
 
+7. Выполните предпусковую проверку конфигурации и артефактов:
+```bash
+./scripts/preflight_check.sh
+```
+
 ---
 
 ## 3. Проверки GPU (обязательно)
@@ -131,17 +136,22 @@ sha256sum models/llm/qwen2.5-7b-instruct-q4_k_m.gguf
 
 ## 5. Запуск системы
 
-1. Поднимите сервисы:
+1. Выполните предпусковую проверку:
+```bash
+./scripts/preflight_check.sh
+```
+
+2. Поднимите сервисы:
 ```bash
 docker compose up -d postgres qdrant llm-server support-api openwebui prometheus loki promtail grafana
 ```
 
-2. Проверьте статус:
+3. Проверьте статус:
 ```bash
 docker compose ps
 ```
 
-3. Проверьте доступность:
+4. Проверьте доступность:
 ```bash
 curl http://localhost:8000/health
 curl http://localhost:6333/healthz
@@ -149,7 +159,7 @@ curl http://localhost:3100/ready
 curl http://localhost:9090/-/healthy
 ```
 
-4. Выполните первичную индексацию:
+5. Выполните первичную индексацию:
 ```bash
 docker compose run --rm ingest-a
 docker compose run --rm ingest-b
