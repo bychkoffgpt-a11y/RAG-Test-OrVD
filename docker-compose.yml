@@ -48,7 +48,7 @@ services:
     networks: [rag_net]
 
   llm-server:
-    image: ghcr.io/ggerganov/llama.cpp:server-cuda
+    image: ${LLAMA_CPP_IMAGE:-ghcr.io/ggerganov/llama.cpp:server-cuda-b4719}
     container_name: llm-server
     restart: unless-stopped
     command: >

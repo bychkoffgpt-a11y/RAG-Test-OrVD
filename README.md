@@ -30,6 +30,7 @@ docker compose version
 ```bash
 cp .env.example .env
 ./scripts/bootstrap_offline.sh
+./scripts/preflight_check.sh
 docker compose up -d
 ```
 
@@ -38,6 +39,7 @@ docker compose up -d
 docker compose down
 git fetch --all --prune
 git pull --ff-only
+./scripts/preflight_check.sh
 docker compose up -d --build
 ```
 

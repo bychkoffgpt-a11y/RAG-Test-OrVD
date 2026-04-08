@@ -7,6 +7,16 @@
 > ```
 > Если проверки не проходят, сначала выполните шаги подготовки из [`docs/deployment_wsl2.md`](deployment_wsl2.md#1-предварительные-условия).
 
+## Предпусковая проверка (рекомендуется перед каждым запуском)
+```bash
+./scripts/preflight_check.sh
+```
+
+Если Docker временно недоступен в shell (например, в CI lint-этапе), можно выполнить только файловую/ENV-проверку:
+```bash
+./scripts/preflight_check.sh --skip-docker
+```
+
 ## Базовые команды
 - Запуск: `docker compose up -d`
 - Остановка: `docker compose down`
@@ -37,11 +47,15 @@
    ```bash
    cp -n .env.example .env
    ```
-6. Поднять стек заново с пересборкой:
+6. Выполнить предпусковую проверку:
+   ```bash
+   ./scripts/preflight_check.sh
+   ```
+7. Поднять стек заново с пересборкой:
    ```bash
    docker compose up -d --build
    ```
-7. Проверить состояние:
+8. Проверить состояние:
    ```bash
    docker compose ps
    docker compose logs -f support-api
