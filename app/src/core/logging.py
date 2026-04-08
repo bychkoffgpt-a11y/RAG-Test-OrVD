@@ -25,7 +25,15 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging() -> None:
-    os.makedirs('/app/logs', exist_ok=True)
+    log_dir = os.environ.get('LOG_DIR', '/app/logs')
+    fallback_log_dir = os.path.join(os.getcwd(), 'logs')
+
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        file_path = os.path.join(log_dir, 'support-api.log')
+    except PermissionError:
+        os.makedirs(fallback_log_dir, exist_ok=True)
+        file_path = os.path.join(fallback_log_dir, 'support-api.log')
 
     root = logging.getLogger()
     root.setLevel(settings.log_level.upper())
@@ -34,7 +42,7 @@ def configure_logging() -> None:
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(JsonFormatter())
 
-    file_handler = logging.FileHandler('/app/logs/support-api.log')
+    file_handler = logging.FileHandler(file_path)
     file_handler.setFormatter(JsonFormatter())
 
     root.addHandler(stream_handler)
