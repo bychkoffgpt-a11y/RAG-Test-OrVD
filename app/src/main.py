@@ -1,10 +1,11 @@
 import logging
+import json
 import time
 import uuid
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
 
 from src.api.ask import router as ask_router
@@ -59,14 +60,6 @@ def metrics():
 
 @app.post('/v1/chat/completions')
 def openai_compat(payload: dict):
-    if payload.get('stream') is True:
-        return JSONResponse(
-            status_code=400,
-            content={
-                'detail': 'stream=true пока не поддерживается. Используйте stream=false.',
-            },
-        )
-
     messages = payload.get('messages', [])
     question = ''
     if messages:
@@ -98,11 +91,48 @@ def openai_compat(payload: dict):
 
     logger.info('openai_compat_generation_params', extra={'max_tokens': max_tokens, 'temperature': temperature})
 
+    completion_id = f'chatcmpl-{uuid.uuid4().hex[:12]}'
+    created = int(time.time())
+    model = payload.get('model', 'local-rag-model')
+    is_stream = payload.get('stream') is True
+
+    if is_stream:
+        def event_stream():
+            first_chunk = {
+                'id': completion_id,
+                'object': 'chat.completion.chunk',
+                'created': created,
+                'model': model,
+                'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}],
+            }
+            yield f'data: {json.dumps(first_chunk, ensure_ascii=False)}\n\n'
+
+            content_chunk = {
+                'id': completion_id,
+                'object': 'chat.completion.chunk',
+                'created': created,
+                'model': model,
+                'choices': [{'index': 0, 'delta': {'content': answer.answer}, 'finish_reason': None}],
+            }
+            yield f'data: {json.dumps(content_chunk, ensure_ascii=False)}\n\n'
+
+            final_chunk = {
+                'id': completion_id,
+                'object': 'chat.completion.chunk',
+                'created': created,
+                'model': model,
+                'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}],
+            }
+            yield f'data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n'
+            yield 'data: [DONE]\n\n'
+
+        return StreamingResponse(event_stream(), media_type='text/event-stream')
+
     return {
-        'id': f'chatcmpl-{uuid.uuid4().hex[:12]}',
+        'id': completion_id,
         'object': 'chat.completion',
-        'created': int(time.time()),
-        'model': payload.get('model', 'local-rag-model'),
+        'created': created,
+        'model': model,
         'choices': [
             {
                 'index': 0,
