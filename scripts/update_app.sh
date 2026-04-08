@@ -51,10 +51,6 @@ upstream_ref="$(git rev-parse --abbrev-ref --symbolic-full-name "${current_branc
 
 require_clean_git_tree
 
-log "Останавливаю приложение (docker compose down --remove-orphans)..."
-docker compose down --remove-orphans
-ok "Компоненты приложения остановлены"
-
 log "Обновляю ссылки на удалённые ветки (git fetch --all --prune)..."
 git fetch --all --prune
 ok "fetch завершён"
@@ -70,6 +66,10 @@ if [[ -x "./scripts/preflight_check.sh" ]]; then
 else
   log "preflight_check.sh не найден/не исполняемый, пропускаю проверку"
 fi
+
+log "Останавливаю приложение (docker compose down --remove-orphans)..."
+docker compose down --remove-orphans
+ok "Компоненты приложения остановлены"
 
 log "Запускаю приложение (docker compose up -d --build)..."
 docker compose up -d --build
