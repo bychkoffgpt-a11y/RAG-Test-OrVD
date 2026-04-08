@@ -76,6 +76,21 @@ def openai_compat(payload: dict):
     }
 
 
+@app.get('/v1/models')
+def openai_models():
+    return {
+        'object': 'list',
+        'data': [
+            {
+                'id': 'local-rag-model',
+                'object': 'model',
+                'created': 0,
+                'owned_by': 'local',
+            }
+        ],
+    }
+
+
 @app.exception_handler(Exception)
 async def exception_handler(_: Request, exc: Exception):
     logger.exception('Unhandled error: %s', exc)
