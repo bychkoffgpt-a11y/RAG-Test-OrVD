@@ -16,6 +16,16 @@
 - Prometheus + Grafana (метрики)
 - Loki + Promtail (централизованные логи)
 
+## Предварительные требования
+Перед запуском убедитесь, что в текущем shell доступны Docker и Docker Compose v2:
+
+```bash
+docker --version
+docker compose version
+```
+
+Если видите ошибку `docker: command not found`, сначала выполните подготовку из подробной инструкции: [`docs/deployment_wsl2.md`](docs/deployment_wsl2.md#1-предварительные-условия).
+
 ## Быстрый старт
 ```bash
 cp .env.example .env
