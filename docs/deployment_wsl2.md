@@ -30,19 +30,31 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install -y git curl jq unzip
 ```
 
-3. Клонируйте репозиторий:
+3. Проверьте доступность Docker CLI внутри WSL2:
+```bash
+docker --version
+docker compose version
+```
+
+Если команда `docker` не найдена:
+1. Установите/запустите Docker Desktop в Windows.
+2. Включите WSL Integration для вашего дистрибутива в Docker Desktop.
+3. Перезапустите Docker Desktop, затем выполните `wsl --shutdown` и снова откройте WSL.
+4. Повторите проверки `docker --version` и `docker compose version`.
+
+4. Клонируйте репозиторий:
 ```bash
 git clone https://github.com/bychkoffgpt-a11y/RAG-Test-OrVD
 cd RAG-Test-OrVD
 ```
 
-4. Подготовьте структуру проекта:
+5. Подготовьте структуру проекта:
 ```bash
 ./scripts/bootstrap_offline.sh
 cp .env.example .env
 ```
 
-5. Заполните `.env` актуальными паролями.
+6. Заполните `.env` актуальными паролями.
 
 ---
 
