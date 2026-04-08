@@ -29,8 +29,8 @@ docker compose version
 ## Быстрый старт
 ```bash
 cp .env.example .env
-./scripts/bootstrap_offline.sh
-./scripts/preflight_check.sh
+./scripts/bootstrap_offline.sh --mode offline
+./scripts/preflight_check.sh --mode offline
 docker compose up -d
 ```
 
@@ -38,7 +38,7 @@ docker compose up -d
 Рекомендуемый способ обновления — использовать единый скрипт:
 
 ```bash
-./scripts/update_app.sh
+./scripts/update_app.sh --mode offline
 ```
 
 Скрипт выполняет шаги в безопасном порядке:
@@ -46,10 +46,18 @@ docker compose up -d
 2. Останавливает весь стек (`docker compose down --remove-orphans`).
 3. Выполняет `git fetch --all --prune`.
 4. Выполняет `git pull --ff-only` (без merge-коммитов).
-5. Запускает `./scripts/preflight_check.sh`.
+5. Запускает `./scripts/preflight_check.sh --mode <offline|online>`.
 6. Поднимает приложение `docker compose up -d --build`.
 
-Важно: `preflight_check.sh` теперь проверяет, что `app/wheels` содержит хотя бы один `*.whl`. Это защищает от неявного перехода в онлайн-режим установки зависимостей (PyPI) в закрытом контуре.
+Режимы работы:
+- `--mode offline` (по умолчанию): `preflight_check.sh` проверяет, что `app/wheels` содержит хотя бы один `*.whl`.
+- `--mode online`: пустой `app/wheels` допускается, зависимости будут устанавливаться из PyPI во время сборки.
+
+Примеры:
+```bash
+./scripts/update_app.sh --mode offline
+./scripts/update_app.sh --mode online
+```
 
 Если нужен «чистый» старт без существующих данных, отдельно используйте `docker compose down -v`.
 

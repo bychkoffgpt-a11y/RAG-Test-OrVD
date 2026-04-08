@@ -9,15 +9,22 @@
 
 ## Предпусковая проверка (рекомендуется перед каждым запуском)
 ```bash
-./scripts/preflight_check.sh
+./scripts/preflight_check.sh --mode offline
 ```
 
-Проверка включает контроль `app/wheels`: в каталоге должен быть хотя бы один `*.whl`.  
-Если wheelhouse пустой (например, только `.gitkeep`), скрипт завершится ошибкой, чтобы предотвратить неявную онлайн-установку зависимостей из PyPI.
+Скрипт поддерживает 2 режима:
+- `--mode offline` (по умолчанию): в `app/wheels` должен быть хотя бы один `*.whl`.
+- `--mode online`: пустой wheelhouse допустим, зависимости можно поставить из PyPI.
+
+Примеры:
+```bash
+./scripts/preflight_check.sh --mode offline
+./scripts/preflight_check.sh --mode online
+```
 
 Если Docker временно недоступен в shell (например, в CI lint-этапе), можно выполнить только файловую/ENV-проверку:
 ```bash
-./scripts/preflight_check.sh --skip-docker
+./scripts/preflight_check.sh --mode offline --skip-docker
 ```
 
 ## Автотесты и merge-политика
@@ -47,7 +54,7 @@ pytest -q --cov=src --cov-report=term-missing
 
 Запуск:
 ```bash
-./scripts/update_app.sh
+./scripts/update_app.sh --mode offline
 ```
 
 Что делает скрипт:
@@ -56,7 +63,7 @@ pytest -q --cov=src --cov-report=term-missing
 3. Полностью останавливает стек (`docker compose down --remove-orphans`).
 4. Выполняет `git fetch --all --prune`.
 5. Выполняет `git pull --ff-only`.
-6. Запускает `./scripts/preflight_check.sh`.
+6. Запускает `./scripts/preflight_check.sh --mode <offline|online>`.
 7. Поднимает приложение (`docker compose up -d --build`).
 
 Если нужен «чистый» старт с удалением данных, перед этим выполните отдельно:
@@ -69,8 +76,13 @@ docker compose down -v
 docker compose down --remove-orphans
 git fetch --all --prune
 git pull --ff-only
-./scripts/preflight_check.sh
+./scripts/preflight_check.sh --mode offline
 docker compose up -d --build
+```
+
+Для контура с интернетом можно явно запускать в online-режиме:
+```bash
+./scripts/update_app.sh --mode online
 ```
 
 ## Устойчивость сборки Python-зависимостей и офлайн-режим
@@ -214,5 +226,5 @@ test -f models/embeddings/bge-m3/config.json && echo "embeddings OK"
 - Эталон версий: `docs/model_registry.md`
 
 ## Бэкап
-1. Экспорт БД и файлов: `./scripts/backup_all.sh`
-2. Восстановление: `./scripts/restore_all.sh data/backups/<timestamp>`
+1. Экспорт БД и файлов: `./scripts/backup_all.sh --mode offline`
+2. Восстановление: `./scripts/restore_all.sh --mode offline data/backups/<timestamp>`

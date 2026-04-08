@@ -50,7 +50,7 @@ cd RAG-Test-OrVD
 
 5. Подготовьте структуру проекта:
 ```bash
-./scripts/bootstrap_offline.sh
+./scripts/bootstrap_offline.sh --mode offline
 cp .env.example .env
 ```
 
@@ -58,7 +58,7 @@ cp .env.example .env
 
 7. Выполните предпусковую проверку конфигурации и артефактов:
 ```bash
-./scripts/preflight_check.sh
+./scripts/preflight_check.sh --mode offline
 ```
 
 ---
@@ -138,7 +138,7 @@ sha256sum models/llm/qwen2.5-7b-instruct-q4_k_m.gguf
 
 1. Выполните предпусковую проверку:
 ```bash
-./scripts/preflight_check.sh
+./scripts/preflight_check.sh --mode offline
 ```
 
 2. Поднимите сервисы:
@@ -218,12 +218,12 @@ docker compose logs --tail=200 loki
 
 ## 8.3. Бэкап
 ```bash
-./scripts/backup_all.sh
+./scripts/backup_all.sh --mode offline
 ```
 
 ## 8.4. Восстановление
 ```bash
-./scripts/restore_all.sh data/backups/<timestamp>
+./scripts/restore_all.sh --mode offline data/backups/<timestamp>
 ```
 
 ---
