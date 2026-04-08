@@ -1,3 +1,6 @@
+import logging
+import time
+
 from src.api.schemas import AskRequest, AskResponse, SourceItem
 from src.llm.client import LlmClient
 from src.rag.answer_formatter import collect_images
@@ -5,15 +8,43 @@ from src.rag.prompt_builder import build_prompt
 from src.rag.retriever import Retriever
 
 
+logger = logging.getLogger(__name__)
+
+
 class RagOrchestrator:
     def __init__(self) -> None:
         self.retriever = Retriever()
         self.llm = LlmClient()
 
-    def answer(self, payload: AskRequest) -> AskResponse:
+    def answer(self, payload: AskRequest, max_tokens: int = 512, temperature: float = 0.1) -> AskResponse:
+        started = time.perf_counter()
+
+        retrieve_started = time.perf_counter()
         contexts = self.retriever.retrieve(payload.question, payload.top_k, payload.scope)
+        logger.info(
+            'rag_retrieve_finished',
+            extra={
+                'contexts': len(contexts),
+                'duration_sec': round(time.perf_counter() - retrieve_started, 3),
+            },
+        )
+
+        prompt_started = time.perf_counter()
         prompt = build_prompt(payload.question, contexts)
-        answer = self.llm.generate(prompt)
+        logger.info(
+            'rag_prompt_built',
+            extra={
+                'prompt_length_chars': len(prompt),
+                'duration_sec': round(time.perf_counter() - prompt_started, 3),
+            },
+        )
+
+        llm_started = time.perf_counter()
+        answer = self.llm.generate(prompt, max_tokens=max_tokens, temperature=temperature)
+        logger.info(
+            'rag_llm_finished',
+            extra={'duration_sec': round(time.perf_counter() - llm_started, 3)},
+        )
 
         sources = [
             SourceItem(
@@ -27,5 +58,14 @@ class RagOrchestrator:
             for item in contexts
         ]
         images = collect_images(contexts)
+
+        logger.info(
+            'rag_answer_ready',
+            extra={
+                'sources': len(sources),
+                'images': len(images),
+                'duration_sec': round(time.perf_counter() - started, 3),
+            },
+        )
 
         return AskResponse(answer=answer, sources=sources, images=images)

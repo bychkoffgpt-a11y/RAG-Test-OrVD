@@ -131,6 +131,55 @@ docker compose up -d --build
 1. Проверьте, что `curl http://localhost:8000/v1/models` возвращает непустой массив `data`.
 2. В интерфейсе Open WebUI выберите модель `local-rag-model` в селекторе модели перед первым вопросом.
 
+## Диагностика зависания ответа ("крутится 10+ минут")
+
+Ниже быстрый runbook для случая, когда в Open WebUI сообщение долго находится в состоянии генерации.
+
+### 1) Проверить базовую доступность API и модели
+```bash
+curl -sS http://localhost:8000/health
+curl -sS http://localhost:8000/v1/models
+```
+
+Ожидается `status=ok` и модель `local-rag-model` в `data`.
+
+### 2) Проверить прямой вызов OpenAI-compatible endpoint
+```bash
+curl -sS http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"local-rag-model","stream":false,"messages":[{"role":"user","content":"Кто ты?"}]}'
+```
+
+Если этот запрос тоже зависает — проблема в backend-пайплайне (retrieval/LLM), а не в UI.
+
+### 3) Проверить, где именно висит пайплайн по логам support-api
+```bash
+docker compose logs -f support-api | rg -n "rag_|retriever_|qdrant_|embedding_model|openai_compat_generation_params|request completed"
+```
+
+Ориентиры:
+- `embedding_model_load_started` без `embedding_model_load_finished` — проблема загрузки embedding-модели.
+- Есть `rag_prompt_built`, но нет `rag_llm_finished` — зависание на LLM (`llm-server`).
+- `retriever_collection_failed` — проблемы с Qdrant/коллекцией.
+
+### 4) Проверить доступность llama.cpp server и Qdrant
+```bash
+curl -sS http://localhost:8080/health
+curl -sS http://localhost:6333/healthz
+docker compose logs --tail=200 llm-server
+docker compose logs --tail=200 qdrant
+```
+
+### 5) Проверить корректность локальных артефактов embedding
+```bash
+test -f models/embeddings/bge-m3/config.json && echo "embeddings OK"
+```
+
+При отсутствии файла API теперь завершается с явной ошибкой и не пытается молча "докачивать" модель.
+
+### 6) Проверить, что клиент не запрашивает stream=true
+Для данного backend потоковый ответ пока не поддержан. Если клиент отправляет `"stream": true`, API вернёт `400` с пояснением.
+
 ## Проверка модельных артефактов перед запуском
 - Проверить наличие LLM: `test -f models/llm/qwen2.5-7b-instruct-q4_k_m.gguf && echo OK`
 - Проверить embeddings: `test -f models/embeddings/bge-m3/config.json && echo OK`

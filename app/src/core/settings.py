@@ -17,5 +17,12 @@ class Settings(BaseSettings):
     embedding_model_path: str = '/models/embeddings/bge-m3'
     reranker_model_path: str = '/models/reranker/bge-reranker-v2-m3'
 
+    qdrant_timeout_sec: float = 15.0
+
+    llm_connect_timeout_sec: float = 5.0
+    llm_read_timeout_sec: float = 120.0
+    llm_write_timeout_sec: float = 10.0
+    llm_pool_timeout_sec: float = 5.0
+
 
 settings = Settings()
