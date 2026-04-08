@@ -49,10 +49,20 @@ docker compose up -d
 5. Запускает `./scripts/preflight_check.sh`.
 6. Поднимает приложение `docker compose up -d --build`.
 
+Важно: `preflight_check.sh` теперь проверяет, что `app/wheels` содержит хотя бы один `*.whl`. Это защищает от неявного перехода в онлайн-режим установки зависимостей (PyPI) в закрытом контуре.
+
 Если нужен «чистый» старт без существующих данных, отдельно используйте `docker compose down -v`.
 
 ## Офлайн-сборка Python-зависимостей
 Для закрытого контура без доступа к PyPI используйте локальный wheelhouse (`app/wheels`) и инструкции в [`docs/operations.md`](docs/operations.md#устойчивость-сборки-python-зависимостей-и-офлайн-режим).
+
+Для онлайн-сборки можно переопределить индекс Python-пакетов через build args:
+```bash
+docker compose build \
+  --build-arg PIP_INDEX_URL=https://pypi.org/simple \
+  --build-arg PIP_EXTRA_INDEX_URL= \
+  --build-arg PIP_TRUSTED_HOST=
+```
 
 ## Документация
 - [Архитектура](docs/architecture.md)
