@@ -34,16 +34,22 @@ cp .env.example .env
 docker compose up -d
 ```
 
-## Полный перезапуск после обновления проекта
+## Обновление проекта и безопасный перезапуск
+Рекомендуемый способ обновления — использовать единый скрипт:
+
 ```bash
-docker compose down
-git fetch --all --prune
-git pull --ff-only
-./scripts/preflight_check.sh
-docker compose up -d --build
+./scripts/update_app.sh
 ```
 
-Если нужен «чистый» старт без существующих данных, используйте `docker compose down -v` перед запуском.
+Скрипт выполняет шаги в безопасном порядке:
+1. Проверяет, что рабочее дерево Git чистое (без `staged`/`unstaged` изменений).
+2. Останавливает весь стек (`docker compose down --remove-orphans`).
+3. Выполняет `git fetch --all --prune`.
+4. Выполняет `git pull --ff-only` (без merge-коммитов).
+5. Запускает `./scripts/preflight_check.sh`.
+6. Поднимает приложение `docker compose up -d --build`.
+
+Если нужен «чистый» старт без существующих данных, отдельно используйте `docker compose down -v`.
 
 ## Офлайн-сборка Python-зависимостей
 Для закрытого контура без доступа к PyPI используйте локальный wheelhouse (`app/wheels`) и инструкции в [`docs/operations.md`](docs/operations.md#устойчивость-сборки-python-зависимостей-и-офлайн-режим).
