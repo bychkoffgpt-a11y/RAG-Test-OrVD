@@ -129,9 +129,14 @@
 
 ## Проверка интеграции
 - API health: `curl http://localhost:8000/health`
+- Список моделей (OpenAI-compatible): `curl http://localhost:8000/v1/models`
 - Метрики: `curl http://localhost:8000/metrics`
 - Qdrant: `curl http://localhost:6333/healthz`
 - Loki ready: `curl http://localhost:3100/ready`
+
+Если в Open WebUI появляется ошибка `Модель не выбрана`:
+1. Проверьте, что `curl http://localhost:8000/v1/models` возвращает непустой массив `data`.
+2. В интерфейсе Open WebUI выберите модель `local-rag-model` в селекторе модели перед первым вопросом.
 
 ## Проверка модельных артефактов перед запуском
 - Проверить наличие LLM: `test -f models/llm/qwen2.5-7b-instruct-q4_k_m.gguf && echo OK`
