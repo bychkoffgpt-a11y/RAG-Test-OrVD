@@ -56,8 +56,16 @@ require_model_file() {
 
 require_compose_env_refs() {
   local key="$1"
-  rg -n "\\$\\{${key}([:-][^}]*)?}" "$COMPOSE_FILE" >/dev/null \
-    || warn "Переменная $key не используется в docker-compose.yml"
+  local pattern="\\$\\{${key}([:-][^}]*)?}"
+
+  if command -v rg >/dev/null 2>&1; then
+    rg -n "$pattern" "$COMPOSE_FILE" >/dev/null \
+      || warn "Переменная $key не используется в docker-compose.yml"
+    return
+  fi
+
+  grep -nE "$pattern" "$COMPOSE_FILE" >/dev/null \
+    || warn "Переменная $key не используется в docker-compose.yml (подсказка: установите ripgrep для более точной проверки)"
 }
 
 check_docker_image_tag() {
