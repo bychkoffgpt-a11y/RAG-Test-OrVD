@@ -5,10 +5,53 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ROOT_DIR}/.env"
 COMPOSE_FILE="${ROOT_DIR}/docker-compose.yml"
 SKIP_DOCKER_CHECK=0
+MODE="offline"
 
-if [[ "${1:-}" == "--skip-docker" ]]; then
-  SKIP_DOCKER_CHECK=1
-fi
+usage() {
+  cat <<'EOF'
+Usage: ./scripts/preflight_check.sh [--mode offline|online] [--skip-docker]
+
+Options:
+  --mode MODE     Режим проверки:
+                    offline (по умолчанию) — обязательно требовать *.whl в app/wheels
+                    online                — разрешить пустой app/wheels
+  --offline       Эквивалент: --mode offline
+  --online        Эквивалент: --mode online
+  --skip-docker   Пропустить docker pull/docker compose config проверки
+  -h, --help      Показать справку
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-docker)
+      SKIP_DOCKER_CHECK=1
+      shift
+      ;;
+    --mode)
+      [[ $# -ge 2 ]] || { usage; echo "[FAIL] Не указано значение для --mode" >&2; exit 1; }
+      MODE="$2"
+      shift 2
+      ;;
+    --offline)
+      MODE="offline"
+      shift
+      ;;
+    --online)
+      MODE="online"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage
+      echo "[FAIL] Неизвестный параметр: $1" >&2
+      exit 1
+      ;;
+  esac
+done
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -66,6 +109,27 @@ require_nonempty_wheelhouse() {
   ok "Найдены wheel-пакеты для офлайн-сборки: $dir"
 }
 
+check_wheelhouse_by_mode() {
+  local dir="$1"
+
+  case "$MODE" in
+    offline)
+      require_nonempty_wheelhouse "$dir"
+      ;;
+    online)
+      require_dir "$dir"
+      if find "$dir" -mindepth 1 -maxdepth 1 -type f -name '*.whl' -print -quit | grep -q .; then
+        ok "Найдены wheel-пакеты (будут использованы при сборке): $dir"
+      else
+        warn "wheelhouse пустой: $dir. В режиме online это допустимо, зависимости будут ставиться из PyPI."
+      fi
+      ;;
+    *)
+      fail "Некорректный режим MODE='$MODE'. Ожидается: offline или online"
+      ;;
+  esac
+}
+
 require_compose_env_refs() {
   local key="$1"
   local pattern="\\$\\{${key}([:-][^}]*)?}"
@@ -115,7 +179,7 @@ require_dir "$ROOT_DIR/models"
 require_dir "$ROOT_DIR/models/llm"
 require_dir "$ROOT_DIR/models/embeddings"
 require_dir "$ROOT_DIR/models/reranker"
-require_nonempty_wheelhouse "$ROOT_DIR/app/wheels"
+check_wheelhouse_by_mode "$ROOT_DIR/app/wheels"
 require_dir "$ROOT_DIR/data/inbox/csv_ans_docs"
 require_dir "$ROOT_DIR/data/inbox/internal_regulations"
 

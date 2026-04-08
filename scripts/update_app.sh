@@ -1,5 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
+MODE="offline"
+
+usage() {
+  cat <<'EOF'
+Usage: ./scripts/update_app.sh [--mode offline|online]
+
+Options:
+  --mode MODE   Режим обновления:
+                  offline (по умолчанию) — строгая проверка wheelhouse
+                  online                — допускается пустой wheelhouse
+  --offline     Эквивалент: --mode offline
+  --online      Эквивалент: --mode online
+  -h, --help    Показать справку
+EOF
+}
 
 log() {
   echo "[INFO] $*"
@@ -27,6 +42,39 @@ require_clean_git_tree() {
     fail "Есть изменения в индексе (staged). Зафиксируйте их перед обновлением."
   fi
 }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mode)
+      [[ $# -ge 2 ]] || { usage; fail "Не указано значение для --mode"; }
+      MODE="$2"
+      shift 2
+      ;;
+    --offline)
+      MODE="offline"
+      shift
+      ;;
+    --online)
+      MODE="online"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage
+      fail "Неизвестный параметр: $1"
+      ;;
+  esac
+done
+
+case "$MODE" in
+  offline|online) ;;
+  *)
+    fail "Некорректный режим MODE='$MODE'. Ожидается: offline или online"
+    ;;
+esac
 
 ROOT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [[ -n "$ROOT_DIR" ]] || fail "Скрипт нужно запускать внутри Git-репозитория проекта."
@@ -64,8 +112,8 @@ git pull --ff-only
 ok "pull завершён"
 
 if [[ -x "./scripts/preflight_check.sh" ]]; then
-  log "Запускаю предпусковую проверку..."
-  ./scripts/preflight_check.sh
+  log "Запускаю предпусковую проверку (режим: $MODE)..."
+  ./scripts/preflight_check.sh --mode "$MODE"
   ok "Предпусковая проверка пройдена"
 else
   log "preflight_check.sh не найден/не исполняемый, пропускаю проверку"
