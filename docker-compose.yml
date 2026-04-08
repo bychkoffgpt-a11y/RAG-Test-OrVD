@@ -105,7 +105,7 @@ services:
     restart: unless-stopped
     environment:
       WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
-      ENABLE_SIGNUP: "false"
+      ENABLE_SIGNUP: "true"
       OPENAI_API_BASE_URL: http://support-api:8000/v1
       OPENAI_API_KEY: ${WEBUI_API_KEY}
     volumes:
