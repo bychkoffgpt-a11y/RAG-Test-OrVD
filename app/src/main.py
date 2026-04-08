@@ -2,14 +2,17 @@ import logging
 import time
 import uuid
 
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from src.api.ask import router as ask_router
 from src.api.ingest_a import router as ingest_a_router
 from src.api.ingest_b import router as ingest_b_router
 from src.api.schemas import AskRequest
 from src.core.logging import configure_logging
+from src.core.request_context import reset_request_id, set_request_id
 from src.rag.orchestrator import RagOrchestrator
 from src.telemetry.metrics import HTTP_LATENCY, HTTP_REQUESTS, metrics_response
 
@@ -28,9 +31,11 @@ orch = RagOrchestrator()
 async def metrics_middleware(request: Request, call_next):
     start = time.perf_counter()
     request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
+    token = set_request_id(request_id)
     try:
         response = await call_next(request)
         status_code = response.status_code
+        response.headers['X-Request-ID'] = request_id
         return response
     finally:
         duration = time.perf_counter() - start
@@ -39,6 +44,7 @@ async def metrics_middleware(request: Request, call_next):
         HTTP_REQUESTS.labels(method=method, path=path, status=str(locals().get('status_code', 500))).inc()
         HTTP_LATENCY.labels(method=method, path=path).observe(duration)
         logger.info('request completed', extra={'request_id': request_id})
+        reset_request_id(token)
 
 
 @app.get('/health')
@@ -53,12 +59,45 @@ def metrics():
 
 @app.post('/v1/chat/completions')
 def openai_compat(payload: dict):
+    if payload.get('stream') is True:
+        return JSONResponse(
+            status_code=400,
+            content={
+                'detail': 'stream=true пока не поддерживается. Используйте stream=false.',
+            },
+        )
+
     messages = payload.get('messages', [])
     question = ''
     if messages:
-        question = messages[-1].get('content', '')
+        content = messages[-1].get('content', '')
+        if isinstance(content, str):
+            question = content
+        elif isinstance(content, list):
+            text_parts = []
+            for part in content:
+                if isinstance(part, dict) and part.get('type') == 'text':
+                    text_parts.append(part.get('text', ''))
+            question = '\n'.join([p for p in text_parts if p]).strip()
 
-    answer = orch.answer(AskRequest(question=question, top_k=8, scope='all'))
+    if not question.strip():
+        return JSONResponse(status_code=400, content={'detail': 'Не удалось извлечь текст вопроса из messages.'})
+
+    max_tokens = int(payload.get('max_tokens', 512))
+    temperature = float(payload.get('temperature', 0.1))
+
+    try:
+        ask_payload = AskRequest(question=question, top_k=8, scope='all')
+        answer = orch.answer(ask_payload, max_tokens=max_tokens, temperature=temperature)
+    except ValidationError as exc:
+        return JSONResponse(status_code=400, content={'detail': str(exc)})
+    except httpx.TimeoutException:
+        return JSONResponse(status_code=504, content={'detail': 'Таймаут запроса к LLM. Попробуйте сократить вопрос.'})
+    except httpx.HTTPError as exc:
+        return JSONResponse(status_code=502, content={'detail': f'Ошибка LLM backend: {exc}'})
+
+    logger.info('openai_compat_generation_params', extra={'max_tokens': max_tokens, 'temperature': temperature})
+
     return {
         'id': f'chatcmpl-{uuid.uuid4().hex[:12]}',
         'object': 'chat.completion',

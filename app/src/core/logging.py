@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timezone
 
 from src.core.settings import settings
+from src.core.request_context import get_request_id
 
 
 class JsonFormatter(logging.Formatter):
@@ -16,6 +17,8 @@ class JsonFormatter(logging.Formatter):
         }
         if hasattr(record, 'request_id'):
             payload['request_id'] = record.request_id
+        elif get_request_id() is not None:
+            payload['request_id'] = get_request_id()
         if record.exc_info:
             payload['exc_info'] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=False)

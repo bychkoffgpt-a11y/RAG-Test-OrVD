@@ -1,5 +1,11 @@
+import logging
+import time
+
 from src.embeddings.client import EmbeddingClient
 from src.storage.qdrant_repo import QdrantRepo
+
+
+logger = logging.getLogger(__name__)
 
 
 class Retriever:
@@ -7,7 +13,9 @@ class Retriever:
         self.qdrant = QdrantRepo()
 
     def retrieve(self, question: str, top_k: int, scope: str) -> list[dict]:
+        started = time.perf_counter()
         query_vector = EmbeddingClient.embed(question)
+        logger.info('retriever_embedding_ready', extra={'question_length': len(question)})
         collections = []
         if scope in ('all', 'csv_ans_docs'):
             collections.append('csv_ans_docs')
@@ -16,7 +24,21 @@ class Retriever:
 
         results: list[dict] = []
         for collection in collections:
-            rows = self.qdrant.search(collection, query_vector, top_k)
+            collection_started = time.perf_counter()
+            try:
+                rows = self.qdrant.search(collection, query_vector, top_k)
+            except Exception:
+                logger.exception('retriever_collection_failed', extra={'collection': collection})
+                continue
+
+            logger.info(
+                'retriever_collection_finished',
+                extra={
+                    'collection': collection,
+                    'rows': len(rows),
+                    'duration_sec': round(time.perf_counter() - collection_started, 3),
+                },
+            )
             for row in rows:
                 payload = row.payload or {}
                 results.append(
@@ -32,4 +54,13 @@ class Retriever:
                 )
 
         results.sort(key=lambda x: x['score'], reverse=True)
+        logger.info(
+            'retriever_finished',
+            extra={
+                'scope': scope,
+                'total_results': len(results),
+                'returned_results': min(len(results), top_k),
+                'duration_sec': round(time.perf_counter() - started, 3),
+            },
+        )
         return results[:top_k]
