@@ -23,43 +23,36 @@
 - Статус: `docker compose ps`
 - Логи API: `docker compose logs -f support-api`
 
-## Полная остановка и «чистый» перезапуск после обновления проекта
-> Используйте этот сценарий, когда нужно гарантированно остановить весь стек, подтянуть изменения файлов проекта и запустить всё заново.
+## Безопасное обновление и перезапуск приложения
+> Рекомендуемый способ обновления — скрипт `scripts/update_app.sh`.
 
-1. Остановить и удалить контейнеры проекта:
-   ```bash
-   docker compose down
-   ```
-2. (Опционально) удалить также тома данных, если нужен запуск «с нуля» без старых индексов/БД:
-   ```bash
-   docker compose down -v
-   ```
-3. (Опционально) удалить локальные образы проекта, чтобы пересобрать их полностью:
-   ```bash
-   docker compose down --rmi local
-   ```
-4. Обновить файлы проекта из Git:
-   ```bash
-   git fetch --all --prune
-   git pull --ff-only
-   ```
-5. Проверить/обновить `.env` при изменениях переменных:
-   ```bash
-   cp -n .env.example .env
-   ```
-6. Выполнить предпусковую проверку:
-   ```bash
-   ./scripts/preflight_check.sh
-   ```
-7. Поднять стек заново с пересборкой:
-   ```bash
-   docker compose up -d --build
-   ```
-8. Проверить состояние:
-   ```bash
-   docker compose ps
-   docker compose logs -f support-api
-   ```
+Запуск:
+```bash
+./scripts/update_app.sh
+```
+
+Что делает скрипт:
+1. Проверяет, что рабочее дерево Git чистое (нет `staged`/`unstaged` изменений).
+2. Проверяет, что запуск идёт из Git-ветки с настроенным `upstream`.
+3. Полностью останавливает стек (`docker compose down --remove-orphans`).
+4. Выполняет `git fetch --all --prune`.
+5. Выполняет `git pull --ff-only`.
+6. Запускает `./scripts/preflight_check.sh`.
+7. Поднимает приложение (`docker compose up -d --build`).
+
+Если нужен «чистый» старт с удалением данных, перед этим выполните отдельно:
+```bash
+docker compose down -v
+```
+
+Ручной сценарий (если нужен полный контроль шагов):
+```bash
+docker compose down --remove-orphans
+git fetch --all --prune
+git pull --ff-only
+./scripts/preflight_check.sh
+docker compose up -d --build
+```
 
 ## Устойчивость сборки Python-зависимостей и офлайн-режим
 
