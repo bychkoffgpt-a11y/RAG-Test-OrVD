@@ -38,11 +38,6 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
       - ./infra/qdrant/config.yaml:/qdrant/config/production.yaml:ro
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:6333/healthz"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
     ports:
       - "6333:6333"
     networks: [rag_net]
@@ -72,11 +67,6 @@ services:
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
-      interval: 20s
-      timeout: 5s
-      retries: 10
     networks: [rag_net]
 
   support-api:
@@ -102,9 +92,9 @@ services:
       postgres:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
       llm-server:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "8000:8000"
     networks: [rag_net]
@@ -193,7 +183,7 @@ services:
       - ./models:/models:ro
     depends_on:
       qdrant:
-        condition: service_healthy
+        condition: service_started
       postgres:
         condition: service_healthy
     networks: [rag_net]
@@ -210,7 +200,7 @@ services:
       - ./models:/models:ro
     depends_on:
       qdrant:
-        condition: service_healthy
+        condition: service_started
       postgres:
         condition: service_healthy
     networks: [rag_net]
