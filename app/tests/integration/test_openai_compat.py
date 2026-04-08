@@ -68,3 +68,41 @@ def test_chat_completions_stream_returns_sse_chunks(monkeypatch):
     assert '"object": "chat.completion.chunk"' in body
     assert '"finish_reason": "stop"' in body
     assert 'data: [DONE]' in body
+
+
+def test_chat_completions_uses_last_user_message(monkeypatch):
+    monkeypatch.setattr(main_module, 'orch', DummyOrchestrator())
+    client = TestClient(app)
+
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [
+            {'role': 'user', 'content': 'Первый вопрос'},
+            {'role': 'assistant', 'content': 'Ответ модели'},
+            {'role': 'assistant', 'content': ''},
+        ],
+        'stream': False,
+    }
+
+    response = client.post('/v1/chat/completions', json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data['choices'][0]['message']['content'] == 'Тестовый ответ'
+
+
+def test_chat_completions_accepts_null_generation_params(monkeypatch):
+    monkeypatch.setattr(main_module, 'orch', DummyOrchestrator())
+    client = TestClient(app)
+
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [{'role': 'user', 'content': 'Привет'}],
+        'max_tokens': None,
+        'temperature': None,
+        'stream': False,
+    }
+
+    response = client.post('/v1/chat/completions', json=payload)
+
+    assert response.status_code == 200

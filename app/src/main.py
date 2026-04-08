@@ -62,10 +62,13 @@ def metrics():
 def openai_compat(payload: dict):
     messages = payload.get('messages', [])
     question = ''
-    if messages:
-        content = messages[-1].get('content', '')
+    for message in reversed(messages):
+        if message.get('role') != 'user':
+            continue
+
+        content = message.get('content', '')
         if isinstance(content, str):
-            question = content
+            question = content.strip()
         elif isinstance(content, list):
             text_parts = []
             for part in content:
@@ -73,11 +76,23 @@ def openai_compat(payload: dict):
                     text_parts.append(part.get('text', ''))
             question = '\n'.join([p for p in text_parts if p]).strip()
 
+        if question:
+            break
+
     if not question.strip():
         return JSONResponse(status_code=400, content={'detail': 'Не удалось извлечь текст вопроса из messages.'})
 
-    max_tokens = int(payload.get('max_tokens', 512))
-    temperature = float(payload.get('temperature', 0.1))
+    raw_max_tokens = payload.get('max_tokens')
+    if raw_max_tokens is None:
+        max_tokens = 512
+    else:
+        max_tokens = int(raw_max_tokens)
+
+    raw_temperature = payload.get('temperature')
+    if raw_temperature is None:
+        temperature = 0.1
+    else:
+        temperature = float(raw_temperature)
 
     try:
         ask_payload = AskRequest(question=question, top_k=8, scope='all')
