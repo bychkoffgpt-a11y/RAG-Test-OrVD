@@ -15,6 +15,17 @@ from src.storage.qdrant_repo import QdrantRepo
 logger = logging.getLogger(__name__)
 
 
+def _extract_structured_metadata(chunk_text: str, strategy: str) -> dict:
+    first_sentence = chunk_text.split('. ')[0][:180]
+    metadata = {
+        'section_title': first_sentence,
+        'clause_ref': None,
+    }
+    if strategy == 'regs':
+        metadata['clause_ref'] = first_sentence
+    return metadata
+
+
 def _parse_file(path: Path) -> dict:
     suffix = path.suffix.lower()
     if suffix == '.docx':
@@ -27,7 +38,14 @@ def _parse_file(path: Path) -> dict:
     raise ValueError(f'Неподдерживаемый формат: {suffix}')
 
 
-def run_pipeline(input_dir: str, source_type: str) -> dict:
+def run_pipeline(
+    input_dir: str,
+    source_type: str,
+    *,
+    chunk_size: int = 900,
+    overlap: int = 120,
+    chunk_strategy: str = 'fixed',
+) -> dict:
     qdrant = QdrantRepo()
     postgres = PostgresRepo()
     qdrant.ensure_collection(source_type, vector_size=1024)
@@ -53,12 +71,18 @@ def run_pipeline(input_dir: str, source_type: str) -> dict:
             }
         )
 
-        chunks = chunk_text(parsed.get('text', ''))
+        chunks = chunk_text(
+            parsed.get('text', ''),
+            chunk_size=chunk_size,
+            overlap=overlap,
+            strategy=chunk_strategy,
+        )
         points = []
 
         for idx, ch in enumerate(chunks):
             chunk_id = f'{doc_id}_ch_{idx}'
             vector = EmbeddingClient.embed(ch)
+            structured_metadata = _extract_structured_metadata(ch, chunk_strategy)
             payload = {
                 'doc_id': doc_id,
                 'source_type': source_type,
@@ -66,6 +90,8 @@ def run_pipeline(input_dir: str, source_type: str) -> dict:
                 'text': ch,
                 'page_number': None,
                 'image_paths': parsed.get('images', []),
+                'section_title': structured_metadata['section_title'],
+                'clause_ref': structured_metadata['clause_ref'],
             }
             points.append(PointStruct(id=abs(hash((source_type, chunk_id))) % 10**12, vector=vector, payload=payload))
 
