@@ -15,11 +15,13 @@
 Скрипт поддерживает 2 режима:
 - `--mode offline` (по умолчанию): в `app/wheels` должен быть полный набор wheel для всех прямых и транзитивных зависимостей.
 - `--mode online`: пустой wheelhouse допустим, зависимости можно поставить из PyPI.
+- `--online-strict-wheels`: дополнительно к `--mode online` требует полный wheelhouse (для запуска без fallback в PyPI).
 
 Примеры:
 ```bash
 ./scripts/preflight_check.sh --mode offline
 ./scripts/preflight_check.sh --mode online
+./scripts/preflight_check.sh --mode online --online-strict-wheels
 ```
 
 Если Docker временно недоступен в shell (например, в CI lint-этапе), можно выполнить только файловую/ENV-проверку:
@@ -87,12 +89,19 @@ docker compose up -d --build
 ./scripts/update_app.sh --mode online
 ```
 
+Для ускорения и предсказуемости online-сборки рекомендуется strict-режим wheelhouse:
+```bash
+./scripts/update_wheels.sh --mode refresh --strict
+./scripts/update_app.sh --mode online --online-strict-wheels
+```
+
 ## Устойчивость сборки Python-зависимостей и офлайн-режим
 
 ### Вариант 1 — онлайн-сборка (по умолчанию)
 - При `docker compose build`/`up --build` используется `pip install` с повышенными retry/timeout.
 - Этот режим требует доступ к PyPI.
-- В режиме online используется `PIP_MODE=online`: при наличии `app/wheels/*.whl` сначала пробуется локальный wheelhouse, а при ошибке автоматически включается fallback на PyPI.
+- В режиме online используется `PIP_MODE=online`: при наличии `app/wheels/*.whl` сначала пробуется локальный wheelhouse.
+- Если задан `PIP_ONLINE_FALLBACK=0` (или `./scripts/update_app.sh --online-strict-wheels`), fallback на PyPI отключается и сборка падает при неполном wheelhouse.
 - Перед установкой выполняется TLS precheck к `pypi.org:443`; при проблемах выводится явная диагностика по сети/сертификатам.
 - Можно использовать кастомный индекс/зеркало через build args:
   ```bash
@@ -106,7 +115,7 @@ docker compose up -d --build
 ### Вариант 2 — полностью офлайн (рекомендуется для закрытого контура)
 1. На машине с интернетом подготовить wheelhouse:
    ```bash
-   ./scripts/update_wheels.sh --mode refresh
+   ./scripts/update_wheels.sh --mode refresh --strict
    ```
    Либо (если нужно добавить dev-зависимости):
    ```bash
@@ -127,7 +136,19 @@ docker compose up -d --build
    PIP_MODE=offline docker compose build --no-cache support-api
    ```
 
-Ранее используемая ручная команда `pip download ...` по списку пакетов всё ещё допустима, но рекомендуется именно `scripts/update_wheels.sh`: скрипт формирует список из `pyproject.toml`, валидирует транзитивные зависимости и атомарно заменяет wheelhouse.
+Ранее используемая ручная команда `pip download ...` по списку пакетов всё ещё допустима, но рекомендуется именно `scripts/update_wheels.sh`: скрипт формирует список из `pyproject.toml`, валидирует транзитивные зависимости, поддерживает strict-режим и атомарно заменяет wheelhouse.
+
+## Кэширование сборки Docker (BuildKit local cache)
+
+Для сервисов `support-api` и `ingest-*` в `docker-compose.yml` включены `cache_from/cache_to` в локальный каталог `.docker-cache/`.
+Это ускоряет повторные сборки после `git pull`, особенно при неизменных слоях зависимостей.
+
+Рекомендации:
+- Не удаляйте `.docker-cache/` между обычными обновлениями.
+- Для «чистой» диагностики кэша можно временно удалить каталог:
+  ```bash
+  rm -rf .docker-cache
+  ```
 
 Пример старого ручного варианта:
    ```bash

@@ -73,8 +73,14 @@ services:
     build:
       context: ./app
       dockerfile: Dockerfile
+      cache_from:
+        - type=local,src=.docker-cache/support-api
+      cache_to:
+        - type=local,dest=.docker-cache/support-api,mode=max
       args:
         PIP_MODE: ${PIP_MODE:-auto}
+        PIP_ONLINE_FALLBACK: ${PIP_ONLINE_FALLBACK:-1}
+        INCLUDE_INGEST_DEPS: 0
     container_name: support-api
     restart: unless-stopped
     env_file: [.env]
@@ -177,8 +183,14 @@ services:
     build:
       context: ./app
       dockerfile: Dockerfile
+      cache_from:
+        - type=local,src=.docker-cache/ingest
+      cache_to:
+        - type=local,dest=.docker-cache/ingest,mode=max
       args:
         PIP_MODE: ${PIP_MODE:-auto}
+        PIP_ONLINE_FALLBACK: ${PIP_ONLINE_FALLBACK:-1}
+        INCLUDE_INGEST_DEPS: 1
     profiles: ["manual"]
     env_file: [.env]
     environment:
@@ -203,8 +215,14 @@ services:
     build:
       context: ./app
       dockerfile: Dockerfile
+      cache_from:
+        - type=local,src=.docker-cache/ingest
+      cache_to:
+        - type=local,dest=.docker-cache/ingest,mode=max
       args:
         PIP_MODE: ${PIP_MODE:-auto}
+        PIP_ONLINE_FALLBACK: ${PIP_ONLINE_FALLBACK:-1}
+        INCLUDE_INGEST_DEPS: 1
     profiles: ["manual"]
     env_file: [.env]
     environment:

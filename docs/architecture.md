@@ -27,6 +27,7 @@
   - профили чанкинга по типу корпуса (A/B);
   - chunking, эмбеддинги, upsert в Qdrant;
   - запись метаданных в PostgreSQL.
+  - выполняются в сборке контейнера с расширенными системными зависимостями (`libreoffice`, `tesseract`, `poppler-utils`), в то время как `support-api` использует облегчённый runtime-образ без этих пакетов.
 
 ## Профили чанкинга и индексации
 
@@ -76,3 +77,7 @@
 - Promtail читает контейнерные логи Docker и файл логов API.
 - Loki агрегирует логи.
 - Grafana подключена к Loki и Prometheus.
+
+## Оптимизация времени сборки
+- Для `support-api` и `ingest-*` включён BuildKit local cache (`.docker-cache/*`) через `cache_from/cache_to` в `docker-compose.yml`.
+- В online-контуре рекомендуется режим `online + strict wheels`, при котором зависимости ставятся только из локального wheelhouse и не выполняется fallback в PyPI.

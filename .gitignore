@@ -7,3 +7,4 @@ app/logs/*.log
 data/backups/
 models/**
 !models/.gitkeep
+.docker-cache/

@@ -7,10 +7,11 @@ PYPROJECT_FILE="${APP_DIR}/pyproject.toml"
 WHEELS_DIR="${APP_DIR}/wheels"
 MODE="refresh"
 INCLUDE_DEV=0
+STRICT=0
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/update_wheels.sh [--mode refresh|append] [--include-dev]
+Usage: ./scripts/update_wheels.sh [--mode refresh|append] [--include-dev] [--strict]
 
 Скрипт безопасно обновляет wheelhouse в app/wheels:
   - refresh (по умолчанию): пересоздаёт wheelhouse атомарно через временный каталог
@@ -19,6 +20,7 @@ Usage: ./scripts/update_wheels.sh [--mode refresh|append] [--include-dev]
 Options:
   --mode MODE    refresh|append
   --include-dev  добавить зависимости из project.optional-dependencies.dev
+  --strict       завершиться с ошибкой, если wheelhouse неполный/несовместимый
   -h, --help     Показать справку
 USAGE
 }
@@ -49,6 +51,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --include-dev)
       INCLUDE_DEV=1
+      shift
+      ;;
+    --strict)
+      STRICT=1
       shift
       ;;
     -h|--help)
@@ -129,9 +135,13 @@ if [[ "$MODE" == "append" ]]; then
 
   log "Проверяю полноту wheelhouse (прямые и транзитивные зависимости)..."
   if ! validate_wheelhouse "$WHEELS_DIR"; then
-    fail "После append wheelhouse всё ещё неполный или несовместимый: $WHEELS_DIR"
+    if [[ "$STRICT" -eq 1 ]]; then
+      fail "После append wheelhouse всё ещё неполный или несовместимый: $WHEELS_DIR"
+    fi
+    log "Wheelhouse после append остаётся неполным/несовместимым (strict отключён)"
+  else
+    ok "Полнота wheelhouse подтверждена (append)"
   fi
-
   ok "Wheelhouse успешно обновлён (append): $WHEELS_DIR"
   exit 0
 fi
@@ -152,7 +162,12 @@ python3 -m pip download \
 
 log "Проверяю полноту нового wheelhouse (прямые и транзитивные зависимости)..."
 if ! validate_wheelhouse "$tmp_wheels_dir"; then
-  fail "Скачанный wheelhouse неполный или несовместимый. Текущий $WHEELS_DIR не изменён."
+  if [[ "$STRICT" -eq 1 ]]; then
+    fail "Скачанный wheelhouse неполный или несовместимый. Текущий $WHEELS_DIR не изменён."
+  fi
+  log "Скачанный wheelhouse неполный/несовместимый (strict отключён), но каталог будет обновлён."
+else
+  ok "Полнота нового wheelhouse подтверждена (прямые и транзитивные зависимости)"
 fi
 
 if [[ -d "$WHEELS_DIR" ]]; then

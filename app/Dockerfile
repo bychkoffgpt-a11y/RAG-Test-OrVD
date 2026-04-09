@@ -9,15 +9,22 @@ ARG PIP_INDEX_URL=https://pypi.org/simple
 ARG PIP_EXTRA_INDEX_URL=
 ARG PIP_TRUSTED_HOST=
 ARG PIP_MODE=auto
+ARG PIP_ONLINE_FALLBACK=1
+ARG INCLUDE_INGEST_DEPS=0
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libreoffice \
-    tesseract-ocr \
-    tesseract-ocr-rus \
-    poppler-utils \
-    ca-certificates \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
+RUN set -euo pipefail; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      wget; \
+    if [ "${INCLUDE_INGEST_DEPS}" = "1" ]; then \
+      apt-get install -y --no-install-recommends \
+        libreoffice \
+        tesseract-ocr \
+        tesseract-ocr-rus \
+        poppler-utils; \
+    fi; \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY pyproject.toml /app/
@@ -66,13 +73,22 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       }; \
     elif [ "${PIP_MODE}" = "online" ]; then \
       if [ "$has_wheels" -eq 1 ]; then \
-        echo "[INFO] pip mode: online with local wheelhouse preference (PIP_MODE=online)"; \
+        if [ "${PIP_ONLINE_FALLBACK}" = "0" ]; then \
+          echo "[INFO] pip mode: online strict wheels (PIP_MODE=online, no fallback)"; \
+        else \
+          echo "[INFO] pip mode: online with local wheelhouse preference (PIP_MODE=online)"; \
+        fi; \
         install_from_wheels || { \
-          echo "[WARN] Установка из wheelhouse не удалась. Переключаюсь на онлайн-индекс."; \
-          install_from_index || { \
-            echo "[FAIL] pip install не смог загрузить зависимости ни из wheelhouse, ни из индекса."; \
+          if [ "${PIP_ONLINE_FALLBACK}" = "0" ]; then \
+            echo "[FAIL] Установка из wheelhouse не удалась, а fallback в онлайн-индекс запрещён (PIP_ONLINE_FALLBACK=0)."; \
             exit 1; \
-          }; \
+          else \
+            echo "[WARN] Установка из wheelhouse не удалась. Переключаюсь на онлайн-индекс."; \
+            install_from_index || { \
+              echo "[FAIL] pip install не смог загрузить зависимости ни из wheelhouse, ни из индекса."; \
+              exit 1; \
+            }; \
+          fi; \
         }; \
       else \
         echo "[INFO] pip mode: online (wheelhouse empty)"; \

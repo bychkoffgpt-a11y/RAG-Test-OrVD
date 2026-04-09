@@ -6,10 +6,11 @@ ENV_FILE="${ROOT_DIR}/.env"
 COMPOSE_FILE="${ROOT_DIR}/docker-compose.yml"
 SKIP_DOCKER_CHECK=0
 MODE="offline"
+ONLINE_STRICT_WHEELS=0
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/preflight_check.sh [--mode offline|online] [--skip-docker]
+Usage: ./scripts/preflight_check.sh [--mode offline|online] [--online-strict-wheels] [--skip-docker]
 
 Options:
   --mode MODE     Режим проверки:
@@ -17,6 +18,8 @@ Options:
                     online                — разрешить пустой app/wheels
   --offline       Эквивалент: --mode offline
   --online        Эквивалент: --mode online
+  --online-strict-wheels
+                  В режиме online требовать полный wheelhouse (без fallback на PyPI)
   --skip-docker   Пропустить docker pull/docker compose config проверки
   -h, --help      Показать справку
 EOF
@@ -39,6 +42,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --online)
       MODE="online"
+      shift
+      ;;
+    --online-strict-wheels)
+      ONLINE_STRICT_WHEELS=1
       shift
       ;;
     -h|--help)
@@ -157,8 +164,16 @@ check_wheelhouse_by_mode() {
     online)
       require_dir "$dir"
       if find "$dir" -mindepth 1 -maxdepth 1 -type f -name '*.whl' -print -quit | grep -q .; then
-        ok "Найдены wheel-пакеты: $dir (в режиме online они будут использованы в приоритете, с fallback на PyPI)"
+        if [[ "$ONLINE_STRICT_WHEELS" -eq 1 ]]; then
+          require_nonempty_wheelhouse "$dir"
+          ok "Режим online+strict: wheelhouse полный, fallback на PyPI можно отключить"
+        else
+          ok "Найдены wheel-пакеты: $dir (в режиме online они будут использованы в приоритете, с fallback на PyPI)"
+        fi
       else
+        if [[ "$ONLINE_STRICT_WHEELS" -eq 1 ]]; then
+          fail "Режим online+strict требует непустой и полный wheelhouse: $dir"
+        fi
         warn "wheelhouse пустой: $dir. В режиме online это допустимо, зависимости будут ставиться из PyPI."
       fi
       ;;
