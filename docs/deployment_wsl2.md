@@ -210,6 +210,20 @@ docker compose logs --tail=200 promtail
 docker compose logs --tail=200 loki
 ```
 
+## 7.4. Преднастроенные alert-шаблоны Grafana (warning/error по всем сервисам)
+- Alert-правила provisioned из файла `infra/grafana/provisioning/alerting/log-severity-rules.yaml`.
+- Правила создаются автоматически при старте контейнера `grafana` и сохраняются для всех пользователей инстанса (не нужно настраивать вручную в новой сессии).
+- Список преднастроенных правил:
+  1. `[Logs] Errors in any service > 0 (5m)` — критический уровень, срабатывает при любых error/fatal/exception логах.
+  2. `[Logs] Warning burst in any service > 20 (10m)` — warning-уровень, всплеск предупреждений.
+  3. `[Logs] Error spike in any service > 15 (5m)` — критический уровень, резкий рост ошибок.
+
+Проверка, что правила загружены:
+```bash
+docker compose restart grafana
+docker compose logs --tail=200 grafana
+```
+
 ---
 
 ## 8. Операционные процедуры
