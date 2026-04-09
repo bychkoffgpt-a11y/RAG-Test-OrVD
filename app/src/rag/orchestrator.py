@@ -6,6 +6,7 @@ from src.llm.client import LlmClient
 from src.rag.answer_formatter import collect_images
 from src.rag.prompt_builder import build_prompt
 from src.rag.retriever import Retriever
+from src.vision.service import VisionService
 
 
 logger = logging.getLogger(__name__)
@@ -19,9 +20,21 @@ class RagOrchestrator:
     def __init__(self) -> None:
         self.retriever = Retriever()
         self.llm = LlmClient()
+        self.vision = VisionService()
 
     def answer(self, payload: AskRequest, max_tokens: int = 512, temperature: float = 0.1) -> AskResponse:
         started = time.perf_counter()
+
+        vision_started = time.perf_counter()
+        raw_visual = self.vision.analyze_attachments(payload.attachments, payload.question)
+        visual_evidence = [item.model_dump() if hasattr(item, 'model_dump') else dict(item) for item in raw_visual]
+        logger.info(
+            'rag_vision_finished',
+            extra={
+                'visual_evidence': len(visual_evidence),
+                'duration_sec': round(time.perf_counter() - vision_started, 3),
+            },
+        )
 
         retrieve_started = time.perf_counter()
         contexts = self.retriever.retrieve(payload.question, payload.top_k, payload.scope)
@@ -33,16 +46,17 @@ class RagOrchestrator:
             },
         )
 
-        if not contexts:
+        if not contexts and not visual_evidence:
             logger.info('rag_no_relevant_context')
             return AskResponse(
                 answer='Не нашёл релевантных данных в базе документов по этому вопросу. Уточните запрос или выберите вопрос по документации.',
                 sources=[],
                 images=[],
+                visual_evidence=[],
             )
 
         prompt_started = time.perf_counter()
-        prompt = build_prompt(payload.question, contexts)
+        prompt = build_prompt(payload.question, contexts, visual_evidence=visual_evidence)
         logger.info(
             'rag_prompt_built',
             extra={
@@ -77,8 +91,9 @@ class RagOrchestrator:
             extra={
                 'sources': len(sources),
                 'images': len(images),
+                'visual_evidence': len(visual_evidence),
                 'duration_sec': round(time.perf_counter() - started, 3),
             },
         )
 
-        return AskResponse(answer=answer, sources=sources, images=images)
+        return AskResponse(answer=answer, sources=sources, images=images, visual_evidence=visual_evidence)

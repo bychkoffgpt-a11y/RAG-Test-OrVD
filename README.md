@@ -4,8 +4,10 @@
 
 ## Зафиксированный стек моделей
 - LLM: `qwen2.5-7b-instruct-q4_k_m.gguf`
+- Vision: `Qwen3-VL-2B-Instruct` (локально в `models/vision/qwen3-vl-2b-instruct/`)
+- OCR: `PaddleOCR` (локальные веса в `models/ocr/`)
 - Embeddings: `BAAI/bge-m3` (локально в `models/embeddings/bge-m3/`)
-- Reranker: `BAAI/bge-reranker-v2-m3` (локально в `models/reranker/bge-reranker-v2-m3/`; артефакт проверяется preflight, но в текущем retrieval-пайплайне не задействован)
+- Reranker: `BAAI/bge-reranker-v2-m3` (локально в `models/reranker/bge-reranker-v2-m3/`)
 
 ## GPU-ускорение retrieval в `support-api`
 - `support-api` может выполнять embeddings и reranker на GPU (`cuda`) через `sentence-transformers`.
@@ -17,6 +19,12 @@
   - `SUPPORT_API_TORCH_DEVICE=cpu`
   - `EMBEDDING_DEVICE=cpu`
   - `RERANKER_DEVICE=cpu`
+
+
+## Мультимодальный режим (single-cutover)
+- `/ask` и `/v1/chat/completions` принимают текст и изображения пользователя.
+- Скриншоты проходят OCR + визуальный анализ; результат включается в prompt и возвращается полем `visual_evidence`.
+- Ingest DOCX/PDF извлекает изображения, строит OCR/caption чанки и индексирует их в Qdrant наравне с текстом.
 
 ## Состав решения
 - Open WebUI (чат-интерфейс)
@@ -105,6 +113,7 @@ docker compose build \
 - [Реестр моделей](docs/model_registry.md)
 - [Развёртывание в WSL2 (подробно)](docs/deployment_wsl2.md)
 - [Эксплуатация](docs/operations.md)
+- [Single-cutover мультимодальный запуск](docs/multimodal_single_cutover.md)
 
 
 ## Автотесты

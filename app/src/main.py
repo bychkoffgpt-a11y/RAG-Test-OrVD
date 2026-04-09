@@ -12,7 +12,7 @@ from src.api.ask import router as ask_router
 from src.api.ingest_a import router as ingest_a_router
 from src.api.ingest_b import router as ingest_b_router
 from src.api.sources import router as sources_router
-from src.api.schemas import AskRequest
+from src.api.schemas import AskRequest, AttachmentItem
 from src.core.logging import configure_logging
 from src.core.request_context import reset_request_id, set_request_id
 from src.rag.answer_formatter import append_sources_markdown
@@ -29,6 +29,37 @@ app.include_router(ingest_b_router)
 app.include_router(sources_router)
 
 orch = RagOrchestrator()
+
+
+def _extract_attachments_from_message_content(content) -> list[AttachmentItem]:
+    attachments: list[AttachmentItem] = []
+    if not isinstance(content, list):
+        return attachments
+
+    for part in content:
+        if not isinstance(part, dict):
+            continue
+        if part.get('type') not in {'image_url', 'input_image', 'image'}:
+            continue
+
+        raw_url = None
+        image_url = part.get('image_url')
+        if isinstance(image_url, dict):
+            raw_url = image_url.get('url')
+        elif isinstance(image_url, str):
+            raw_url = image_url
+        if raw_url is None:
+            raw_url = part.get('url')
+
+        if not isinstance(raw_url, str) or not raw_url.strip():
+            continue
+
+        normalized = raw_url.strip()
+        if normalized.startswith('file://'):
+            normalized = normalized[len('file://') :]
+        attachments.append(AttachmentItem(image_path=normalized))
+
+    return attachments
 
 
 @app.middleware('http')
@@ -65,6 +96,7 @@ def metrics():
 def openai_compat(payload: dict):
     messages = payload.get('messages', [])
     question = ''
+    attachments: list[AttachmentItem] = []
     for message in reversed(messages):
         if message.get('role') != 'user':
             continue
@@ -78,6 +110,7 @@ def openai_compat(payload: dict):
                 if isinstance(part, dict) and part.get('type') == 'text':
                     text_parts.append(part.get('text', ''))
             question = '\n'.join([p for p in text_parts if p]).strip()
+            attachments = _extract_attachments_from_message_content(content)
 
         if question:
             break
@@ -98,7 +131,7 @@ def openai_compat(payload: dict):
         temperature = float(raw_temperature)
 
     try:
-        ask_payload = AskRequest(question=question, top_k=8, scope='all')
+        ask_payload = AskRequest(question=question, top_k=8, scope='all', attachments=attachments)
         answer = orch.answer(ask_payload, max_tokens=max_tokens, temperature=temperature)
     except ValidationError as exc:
         return JSONResponse(status_code=400, content={'detail': str(exc)})
@@ -162,6 +195,7 @@ def openai_compat(payload: dict):
         ],
         'sources': [s.model_dump() for s in answer.sources],
         'images': answer.images,
+        'visual_evidence': [item.model_dump() for item in answer.visual_evidence],
     }
 
 

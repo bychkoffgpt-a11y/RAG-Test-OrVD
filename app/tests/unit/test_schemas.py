@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.api.schemas import AskRequest, SourceItem
+from src.api.schemas import AskRequest, SourceItem, AttachmentItem
 
 
 def test_ask_request_validates_min_question_length():
@@ -19,3 +19,12 @@ def test_source_item_default_image_paths_is_empty_list():
 
     assert item.image_paths == []
     assert item.download_url is None
+
+
+def test_ask_request_accepts_attachments():
+    req = AskRequest(
+        question='Проверьте проблему',
+        attachments=[AttachmentItem(image_path='/tmp/a.png')],
+    )
+
+    assert req.attachments[0].image_path == '/tmp/a.png'
