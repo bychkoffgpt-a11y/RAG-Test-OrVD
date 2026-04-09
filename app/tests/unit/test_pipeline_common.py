@@ -104,3 +104,58 @@ def test_run_pipeline_processes_supported_files_and_skips_others(monkeypatch, tm
     assert len(upserts) == 2
     assert {doc["file_name"] for doc in saved_documents} == {"a.docx", "b.pdf"}
     assert all(chunk["source_type"] == "csv_ans_docs" for chunk in saved_chunks)
+
+
+def test_run_pipeline_sets_page_number_for_pdf_text_chunks(monkeypatch, tmp_path):
+    supported_pdf = tmp_path / "manual.pdf"
+    supported_pdf.write_text("data")
+
+    saved_chunks = []
+
+    class DummyQdrant:
+        def ensure_collection(self, source_type, vector_size):
+            pass
+
+        def upsert_points(self, source_type, points):
+            pass
+
+    class DummyPostgres:
+        def save_document(self, doc):
+            pass
+
+        def save_chunk(self, chunk):
+            saved_chunks.append(chunk)
+
+    class DummyVision:
+        def build_document_image_chunks(self, image_assets, *, doc_id, source_type):
+            return []
+
+    monkeypatch.setattr(pipeline_common, "QdrantRepo", DummyQdrant)
+    monkeypatch.setattr(pipeline_common, "PostgresRepo", DummyPostgres)
+    monkeypatch.setattr(pipeline_common, "VisionService", lambda: DummyVision())
+    monkeypatch.setattr(pipeline_common, "file_sha256", lambda _: "hash")
+    monkeypatch.setattr(
+        pipeline_common,
+        "_parse_file",
+        lambda path, source_type: {
+            "text": "page1\npage2",
+            "page_texts": [
+                {"page_number": 1, "text": "first page text"},
+                {"page_number": 2, "text": "second page text"},
+            ],
+            "pages": 2,
+            "images": [],
+            "image_assets": [],
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_common,
+        "chunk_text",
+        lambda text, chunk_size=900, overlap=120, strategy="fixed": [f"{text}-chunk"],
+    )
+    monkeypatch.setattr(pipeline_common.EmbeddingClient, "embed", lambda text: [0.1, 0.2])
+
+    pipeline_common.run_pipeline(str(tmp_path), "csv_ans_docs")
+
+    text_chunk_pages = [c["page_number"] for c in saved_chunks if c["chunk_id"].endswith("_ch_0") or c["chunk_id"].endswith("_ch_1")]
+    assert text_chunk_pages == [1, 2]

@@ -40,6 +40,31 @@ def _parse_file(path: Path, source_type: str) -> dict:
     raise ValueError(f'Неподдерживаемый формат: {suffix}')
 
 
+
+
+def _build_text_chunks_with_pages(parsed: dict, *, chunk_size: int, overlap: int, chunk_strategy: str) -> list[tuple[str, int | None]]:
+    page_texts = parsed.get('page_texts') or []
+    if page_texts:
+        chunks_with_pages: list[tuple[str, int | None]] = []
+        for page_item in page_texts:
+            page_number = page_item.get('page_number')
+            page_chunks = chunk_text(
+                page_item.get('text', ''),
+                chunk_size=chunk_size,
+                overlap=overlap,
+                strategy=chunk_strategy,
+            )
+            chunks_with_pages.extend((chunk, page_number) for chunk in page_chunks)
+        return chunks_with_pages
+
+    text_chunks = chunk_text(
+        parsed.get('text', ''),
+        chunk_size=chunk_size,
+        overlap=overlap,
+        strategy=chunk_strategy,
+    )
+    return [(chunk, None) for chunk in text_chunks]
+
 def _build_image_points(vision: VisionService, parsed: dict, *, doc_id: str, source_type: str) -> list[dict]:
     image_assets = parsed.get('image_assets') or []
     return vision.build_document_image_chunks(image_assets, doc_id=doc_id, source_type=source_type)
@@ -79,16 +104,16 @@ def run_pipeline(
             }
         )
 
-        text_chunks = chunk_text(
-            parsed.get('text', ''),
+        text_chunks_with_pages = _build_text_chunks_with_pages(
+            parsed,
             chunk_size=chunk_size,
             overlap=overlap,
-            strategy=chunk_strategy,
+            chunk_strategy=chunk_strategy,
         )
         image_points = _build_image_points(vision, parsed, doc_id=doc_id, source_type=source_type)
         points = []
 
-        for idx, ch in enumerate(text_chunks):
+        for idx, (ch, page_number) in enumerate(text_chunks_with_pages):
             chunk_id = f'{doc_id}_ch_{idx}'
             vector = EmbeddingClient.embed(ch)
             structured_metadata = _extract_structured_metadata(ch, chunk_strategy)
@@ -97,7 +122,7 @@ def run_pipeline(
                 'source_type': source_type,
                 'chunk_id': chunk_id,
                 'text': ch,
-                'page_number': None,
+                'page_number': page_number,
                 'image_paths': parsed.get('images', []),
                 'section_title': structured_metadata['section_title'],
                 'clause_ref': structured_metadata['clause_ref'],
@@ -110,7 +135,7 @@ def run_pipeline(
                     'doc_id': doc_id,
                     'source_type': source_type,
                     'chunk_id': chunk_id,
-                    'page_number': None,
+                    'page_number': page_number,
                     'text_preview': ch,
                     'image_paths': parsed.get('images', []),
                 }

@@ -26,8 +26,11 @@ def _extract_pdf_images(reader: PdfReader, *, output_dir: Path) -> tuple[list[st
 def parse_pdf(path: str, *, source_type: str = 'unknown', doc_id: str | None = None) -> dict:
     reader = PdfReader(path)
     pages_text: list[str] = []
-    for page in reader.pages:
-        pages_text.append(page.extract_text() or '')
+    page_texts: list[dict] = []
+    for page_idx, page in enumerate(reader.pages, start=1):
+        page_text = page.extract_text() or ''
+        pages_text.append(page_text)
+        page_texts.append({'page_number': page_idx, 'text': page_text})
 
     root = Path(settings.file_storage_root) / 'parsed_images' / source_type / (doc_id or Path(path).stem)
     image_paths, image_assets = _extract_pdf_images(reader, output_dir=root)
@@ -35,6 +38,7 @@ def parse_pdf(path: str, *, source_type: str = 'unknown', doc_id: str | None = N
     return {
         'pages': len(reader.pages),
         'text': '\n'.join(pages_text),
+        'page_texts': page_texts,
         'images': image_paths,
         'image_assets': image_assets,
     }
