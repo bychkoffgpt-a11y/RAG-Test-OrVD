@@ -63,7 +63,7 @@
 ## Модельный стек (зафиксирован)
 - LLM: `qwen2.5-7b-instruct-q4_k_m.gguf` (через llama.cpp server).
 - Embeddings: `BAAI/bge-m3`.
-- Reranker: `BAAI/bge-reranker-v2-m3` (артефакт обязателен по preflight, но в текущем retrieval-пайплайне не используется).
+- Reranker: `BAAI/bge-reranker-v2-m3` (используется в retrieval-пайплайне для переранжирования найденных чанков по паре вопрос/фрагмент).
 - Источник правды по артефактам и правилам версионирования: [Реестр моделей](model_registry.md).
 
 ## Разделение данных
