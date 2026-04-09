@@ -222,8 +222,17 @@ test -f models/embeddings/bge-m3/config.json && echo "embeddings OK"
 
 При отсутствии файла API теперь завершается с явной ошибкой и не пытается молча "докачивать" модель.
 
-### 6) Проверить, что клиент не запрашивает stream=true
-Для данного backend потоковый ответ пока не поддержан. Если клиент отправляет `"stream": true`, API вернёт `400` с пояснением.
+### 6) Проверить поведение при `stream=true`
+OpenAI-compatible endpoint поддерживает SSE-стриминг (`text/event-stream`): при `"stream": true` backend отправляет чанки `chat.completion.chunk` и финальный маркер `data: [DONE]`.
+
+Проверка:
+```bash
+curl -N -sS http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"local-rag-model","stream":true,"messages":[{"role":"user","content":"Кто ты?"}]}'
+```
+
+Ожидаемо: в ответе идут несколько строк `data: ...`, последняя — `data: [DONE]`.
 
 ## Проверка модельных артефактов перед запуском
 - Проверить наличие LLM: `test -f models/llm/qwen2.5-7b-instruct-q4_k_m.gguf && echo OK`
