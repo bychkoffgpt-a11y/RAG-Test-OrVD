@@ -5,7 +5,7 @@
 ## Зафиксированный стек моделей
 - LLM: `qwen2.5-7b-instruct-q4_k_m.gguf`
 - Embeddings: `BAAI/bge-m3` (локально в `models/embeddings/bge-m3/`)
-- Reranker: `BAAI/bge-reranker-v2-m3` (локально в `models/reranker/bge-reranker-v2-m3/`)
+- Reranker: `BAAI/bge-reranker-v2-m3` (локально в `models/reranker/bge-reranker-v2-m3/`; артефакт проверяется preflight, но в текущем retrieval-пайплайне не задействован)
 
 ## Состав решения
 - Open WebUI (чат-интерфейс)
