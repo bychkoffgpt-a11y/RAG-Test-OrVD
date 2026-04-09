@@ -1,4 +1,4 @@
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 
 def collect_images(contexts: list[dict]) -> list[str]:
@@ -12,10 +12,16 @@ def collect_images(contexts: list[dict]) -> list[str]:
 
 def _to_public_url(download_url: str, base_url: str | None = None) -> str:
     if download_url.startswith(('http://', 'https://')):
-        return download_url
+        return _encode_url_path(download_url)
     if not base_url:
-        return download_url
-    return urljoin(base_url, download_url.lstrip('/'))
+        return _encode_url_path(download_url)
+    return _encode_url_path(urljoin(base_url, download_url.lstrip('/')))
+
+
+def _encode_url_path(url: str) -> str:
+    parsed = urlsplit(url)
+    encoded_path = quote(parsed.path, safe='/%')
+    return urlunsplit((parsed.scheme, parsed.netloc, encoded_path, parsed.query, parsed.fragment))
 
 
 def append_sources_markdown(answer: str, sources: list, base_url: str | None = None) -> str:
@@ -38,7 +44,7 @@ def append_sources_markdown(answer: str, sources: list, base_url: str | None = N
         seen.add(key)
 
         public_url = _to_public_url(download_url, base_url)
-        lines.append(f'- {source_type}/{doc_id}: {public_url}')
+        lines.append(f'- {source_type}/{doc_id}: [скачать документ]({public_url})')
 
     if not lines:
         return answer
