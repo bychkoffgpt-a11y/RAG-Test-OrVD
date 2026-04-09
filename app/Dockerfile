@@ -29,14 +29,16 @@ RUN set -euo pipefail; \
       pip install --no-index --find-links=/wheels --no-build-isolation . ; \
     else \
       echo "[WARN] pip mode: online PyPI (wheelhouse is empty)"; \
-      python - <<'PY' \
-import ssl, socket \
-ctx = ssl.create_default_context() \
-with socket.create_connection(("pypi.org", 443), timeout=10) as sock: \
-    with ctx.wrap_socket(sock, server_hostname="pypi.org"): \
-        pass \
-print("[INFO] TLS precheck to pypi.org:443 passed") \
-PY \
+      python - <<'PY'
+import socket
+import ssl
+
+ctx = ssl.create_default_context()
+with socket.create_connection(("pypi.org", 443), timeout=10) as sock:
+    with ctx.wrap_socket(sock, server_hostname="pypi.org"):
+        pass
+print("[INFO] TLS precheck to pypi.org:443 passed")
+PY
       || { \
         echo "[FAIL] TLS precheck to pypi.org:443 failed. Проверьте доступ в интернет, proxy и CA-сертификаты Docker host."; \
         exit 1; \

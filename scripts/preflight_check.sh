@@ -106,7 +106,51 @@ require_nonempty_wheelhouse() {
     fail "В каталоге wheelhouse нет *.whl: $dir. Без wheel-пакетов сборка support-api перейдет в онлайн-режим (PyPI) и может упасть в закрытом контуре. Подготовьте wheels заранее (см. docs/operations.md, раздел офлайн-сборки)."
   fi
 
+  local pyproject_file="$ROOT_DIR/app/pyproject.toml"
+  [[ -f "$pyproject_file" ]] || fail "Файл не найден: $pyproject_file"
+  local missing_deps
+  if ! missing_deps="$(python3 - "$pyproject_file" "$dir" <<'PY'
+import pathlib
+import re
+import sys
+import tomllib
+
+
+def normalize(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+pyproject_path = pathlib.Path(sys.argv[1])
+wheel_dir = pathlib.Path(sys.argv[2])
+with pyproject_path.open("rb") as fh:
+    data = tomllib.load(fh)
+
+deps = data.get("project", {}).get("dependencies", [])
+required = []
+for dep in deps:
+    pkg = re.split(r"[<>=!~;\\[]", dep, maxsplit=1)[0].strip()
+    if pkg:
+        required.append(normalize(pkg))
+
+present = set()
+for wheel_file in wheel_dir.glob("*.whl"):
+    base = wheel_file.name.split("-", 1)[0]
+    if base:
+        present.add(normalize(base))
+
+missing = sorted(pkg for pkg in required if pkg not in present)
+print(",".join(missing))
+PY
+)"; then
+    fail "Не удалось проверить полноту wheelhouse в $dir"
+  fi
+
+  if [[ -n "$missing_deps" ]]; then
+    fail "Wheelhouse неполный: отсутствуют wheel для пакетов: ${missing_deps}. Подготовьте полный набор зависимостей перед офлайн-сборкой."
+  fi
+
   ok "Найдены wheel-пакеты для офлайн-сборки: $dir"
+  ok "Полнота wheelhouse подтверждена по зависимостям app/pyproject.toml"
 }
 
 check_wheelhouse_by_mode() {
