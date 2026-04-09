@@ -102,6 +102,7 @@ def openai_compat(payload: dict, request: Request):
             continue
 
         content = message.get('content', '')
+        extracted_attachments: list[AttachmentItem] = []
         if isinstance(content, str):
             question = content.strip()
         elif isinstance(content, list):
@@ -110,13 +111,21 @@ def openai_compat(payload: dict, request: Request):
                 if isinstance(part, dict) and part.get('type') == 'text':
                     text_parts.append(part.get('text', ''))
             question = '\n'.join([p for p in text_parts if p]).strip()
-            attachments = _extract_attachments_from_message_content(content)
+            extracted_attachments = _extract_attachments_from_message_content(content)
+
+        if extracted_attachments and not attachments:
+            attachments = extracted_attachments
 
         if question:
+            if extracted_attachments:
+                attachments = extracted_attachments
             break
 
     if not question.strip():
-        return JSONResponse(status_code=400, content={'detail': 'Не удалось извлечь текст вопроса из messages.'})
+        if attachments:
+            question = 'Опишите, что видно на скриншоте, и предложите решение проблемы.'
+        else:
+            return JSONResponse(status_code=400, content={'detail': 'Не удалось извлечь текст вопроса из messages.'})
 
     raw_max_tokens = payload.get('max_tokens')
     if raw_max_tokens is None:

@@ -162,3 +162,30 @@ def test_chat_completions_extracts_image_attachment_from_messages(monkeypatch):
     assert dummy.last_payload is not None
     assert len(dummy.last_payload.attachments) == 1
     assert dummy.last_payload.attachments[0].image_path == '/tmp/screen-1.png'
+
+
+def test_chat_completions_accepts_image_only_message(monkeypatch):
+    dummy = DummyOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    client = TestClient(app)
+
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [
+            {
+                'role': 'user',
+                'content': [
+                    {'type': 'image_url', 'image_url': {'url': 'file:///tmp/screen-only.png'}},
+                ],
+            }
+        ],
+        'stream': False,
+    }
+
+    response = client.post('/v1/chat/completions', json=payload)
+
+    assert response.status_code == 200
+    assert dummy.last_payload is not None
+    assert dummy.last_payload.question == 'Опишите, что видно на скриншоте, и предложите решение проблемы.'
+    assert len(dummy.last_payload.attachments) == 1
+    assert dummy.last_payload.attachments[0].image_path == '/tmp/screen-only.png'
