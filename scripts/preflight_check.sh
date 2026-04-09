@@ -120,7 +120,7 @@ require_nonempty_wheelhouse() {
   tmp_req="$(mktemp)"
   local tmp_download_dir
   tmp_download_dir="$(mktemp -d)"
-  trap 'rm -f "$tmp_req"; rm -rf "$tmp_download_dir"' RETURN
+  trap 'rm -f "${tmp_req:-}"; rm -rf "${tmp_download_dir:-}"' RETURN
 
   if ! python3 - "$pyproject_file" "$tmp_req" <<'PY'
 import pathlib
