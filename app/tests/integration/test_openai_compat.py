@@ -51,7 +51,7 @@ def test_chat_completions_non_stream_returns_200(monkeypatch):
     assert data['object'] == 'chat.completion'
     assert 'Тестовый ответ' in data['choices'][0]['message']['content']
     assert 'Источники для скачивания' in data['choices'][0]['message']['content']
-    assert '/sources/csv_ans_docs/doc-1/download' in data['choices'][0]['message']['content']
+    assert 'http://testserver/sources/csv_ans_docs/doc-1/download' in data['choices'][0]['message']['content']
 
 
 def test_chat_completions_stream_returns_sse_chunks(monkeypatch):
