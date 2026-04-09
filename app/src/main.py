@@ -120,7 +120,7 @@ def openai_compat(payload: dict, request: Request):
 
     raw_max_tokens = payload.get('max_tokens')
     if raw_max_tokens is None:
-        max_tokens = 512
+        max_tokens = 1024
     else:
         max_tokens = int(raw_max_tokens)
 

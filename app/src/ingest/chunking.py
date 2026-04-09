@@ -5,6 +5,44 @@ def _normalize_block(text: str) -> str:
     return ' '.join(text.split()).strip()
 
 
+def _split_long_block(block: str, chunk_size: int, overlap: int) -> list[str]:
+    chunks: list[str] = []
+    start = 0
+    text_len = len(block)
+
+    while start < text_len:
+        target_end = min(start + chunk_size, text_len)
+        end = target_end
+
+        if target_end < text_len:
+            window = block[start:target_end]
+            sentence_break = max(window.rfind('.'), window.rfind('!'), window.rfind('?'), window.rfind(';'))
+            if sentence_break >= int(len(window) * 0.55):
+                end = start + sentence_break + 1
+            else:
+                word_break = window.rfind(' ')
+                if word_break >= int(len(window) * 0.55):
+                    end = start + word_break
+
+        chunk = block[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+
+        if end >= text_len:
+            break
+
+        next_start = max(0, end - overlap)
+        while next_start > 0 and not block[next_start - 1].isspace() and not block[next_start].isspace():
+            next_start -= 1
+        while next_start < text_len and block[next_start].isspace():
+            next_start += 1
+        if next_start <= start:
+            next_start = end
+        start = next_start
+
+    return chunks
+
+
 def _merge_blocks_with_overlap(blocks: list[str], chunk_size: int, overlap: int) -> list[str]:
     merged: list[str] = []
     current = ''
@@ -17,13 +55,7 @@ def _merge_blocks_with_overlap(blocks: list[str], chunk_size: int, overlap: int)
             if current:
                 merged.append(current)
                 current = ''
-            start = 0
-            while start < len(block):
-                end = min(start + chunk_size, len(block))
-                merged.append(block[start:end])
-                if end == len(block):
-                    break
-                start = max(0, end - overlap)
+            merged.extend(_split_long_block(block, chunk_size=chunk_size, overlap=overlap))
             continue
 
         if not current:

@@ -51,9 +51,13 @@ class DummyAnswer:
 class DummyOrchestrator:
     def __init__(self):
         self.last_payload = None
+        self.last_max_tokens = None
+        self.last_temperature = None
 
     def answer(self, ask_payload, max_tokens: int, temperature: float):
         self.last_payload = ask_payload
+        self.last_max_tokens = max_tokens
+        self.last_temperature = temperature
         return DummyAnswer()
 
 
@@ -121,7 +125,8 @@ def test_chat_completions_uses_last_user_message(monkeypatch):
 
 
 def test_chat_completions_accepts_null_generation_params(monkeypatch):
-    monkeypatch.setattr(main_module, 'orch', DummyOrchestrator())
+    dummy = DummyOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
     client = TestClient(app)
 
     payload = {
@@ -135,6 +140,7 @@ def test_chat_completions_accepts_null_generation_params(monkeypatch):
     response = client.post('/v1/chat/completions', json=payload)
 
     assert response.status_code == 200
+    assert dummy.last_max_tokens == 1024
 
 
 def test_chat_completions_extracts_image_attachment_from_messages(monkeypatch):

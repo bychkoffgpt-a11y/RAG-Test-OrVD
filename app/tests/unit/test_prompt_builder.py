@@ -35,3 +35,4 @@ def test_build_prompt_includes_question_and_contexts():
     assert "источник: internal_regulations/REG-7, стр. None" in prompt
     assert 'Сигналы со скриншотов' in prompt
     assert 'HTTP 500 Internal Server Error' in prompt
+    assert 'выводи все пункты полностью' in prompt
