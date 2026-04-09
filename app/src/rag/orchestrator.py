@@ -29,6 +29,14 @@ class RagOrchestrator:
             },
         )
 
+        if not contexts:
+            logger.info('rag_no_relevant_context')
+            return AskResponse(
+                answer='Не нашёл релевантных данных в базе документов по этому вопросу. Уточните запрос или выберите вопрос по документации.',
+                sources=[],
+                images=[],
+            )
+
         prompt_started = time.perf_counter()
         prompt = build_prompt(payload.question, contexts)
         logger.info(

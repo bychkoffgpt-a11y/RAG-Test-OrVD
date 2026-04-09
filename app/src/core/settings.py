@@ -25,6 +25,10 @@ class Settings(BaseSettings):
 
     qdrant_timeout_sec: float = 15.0
 
+    retrieval_candidate_pool_multiplier: int = 3
+    retrieval_min_score: float = 0.25
+    retrieval_use_reranker: bool = True
+
     llm_connect_timeout_sec: float = 5.0
     llm_read_timeout_sec: float = 120.0
     llm_write_timeout_sec: float = 10.0

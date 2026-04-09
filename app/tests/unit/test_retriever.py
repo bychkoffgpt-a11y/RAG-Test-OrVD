@@ -38,8 +38,12 @@ class _FakeQdrant:
         ]
 
 
-def test_retrieve_merges_sorts_and_limits(monkeypatch):
+def test_retrieve_merges_reranks_sorts_and_limits(monkeypatch):
     monkeypatch.setattr("src.rag.retriever.EmbeddingClient.embed", lambda question: [0.1, 0.2, 0.3])
+    monkeypatch.setattr("src.rag.retriever.RerankerClient.rerank", lambda q, docs: [0.2, 0.8])
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_candidate_pool_multiplier", 1)
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_min_score", 0.1)
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_use_reranker", True)
 
     retriever = Retriever()
     retriever.qdrant = _FakeQdrant()
@@ -48,11 +52,16 @@ def test_retrieve_merges_sorts_and_limits(monkeypatch):
 
     assert len(result) == 2
     assert result[0]["doc_id"] == "REG-2"
+    assert result[0]["rerank_score"] == 0.8
     assert result[1]["doc_id"] == "DOC-1"
 
 
 def test_retrieve_handles_collection_error(monkeypatch):
     monkeypatch.setattr("src.rag.retriever.EmbeddingClient.embed", lambda question: [0.1, 0.2, 0.3])
+    monkeypatch.setattr("src.rag.retriever.RerankerClient.rerank", lambda q, docs: [0.8])
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_candidate_pool_multiplier", 1)
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_min_score", 0.1)
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_use_reranker", True)
 
     class _PartiallyFailingQdrant(_FakeQdrant):
         def search(self, collection, query_vector, limit):
@@ -67,3 +76,18 @@ def test_retrieve_handles_collection_error(monkeypatch):
 
     assert len(result) == 1
     assert result[0]["source_type"] == "internal_regulations"
+
+
+def test_retrieve_filters_low_relevance(monkeypatch):
+    monkeypatch.setattr("src.rag.retriever.EmbeddingClient.embed", lambda question: [0.1, 0.2, 0.3])
+    monkeypatch.setattr("src.rag.retriever.RerankerClient.rerank", lambda q, docs: [0.05, 0.08])
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_candidate_pool_multiplier", 1)
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_min_score", 0.1)
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_use_reranker", True)
+
+    retriever = Retriever()
+    retriever.qdrant = _FakeQdrant()
+
+    result = retriever.retrieve("test", top_k=3, scope="all")
+
+    assert result == []
