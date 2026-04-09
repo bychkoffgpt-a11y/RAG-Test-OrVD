@@ -1,33 +1,135 @@
 {
-  "annotations": {"list": []},
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "graphTooltip": 1,
+  "liveNow": true,
   "panels": [
     {
       "type": "timeseries",
       "title": "HTTP Requests/sec",
-      "targets": [{"expr": "rate(http_requests_total[1m])"}],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      "targets": [
+        {
+          "expr": "rate(http_requests_total[1m])"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
     },
     {
       "type": "timeseries",
       "title": "Latency p95",
-      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))"}],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Errors+Warnings by service (1m)",
+      "targets": [
+        {
+          "expr": "sum by (service) (count_over_time({service=~\"$service\"} |~ \"(?i)(\\\\berror\\\\b|\\\\bwarn(?:ing)?\\\\b|\\\\bexception\\\\b|\\\\btraceback\\\\b|\\\\\"level\\\\\"\\\\s*:\\\\s*\\\\\"(?:ERROR|WARNING|WARN)\\\\\")\" [1m]))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      }
     },
     {
       "type": "logs",
-      "title": "Container Logs",
-      "targets": [{"expr": "{service=~\"support-api|qdrant|llm-server|openwebui\"}"}],
-      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 8}
+      "title": "Errors+Warnings (all services, no grouping)",
+      "targets": [
+        {
+          "expr": "{service=~\"$service\"} |~ \"(?i)(\\\\berror\\\\b|\\\\bwarn(?:ing)?\\\\b|\\\\bexception\\\\b|\\\\btraceback\\\\b|\\\\\"level\\\\\"\\\\s*:\\\\s*\\\\\"(?:ERROR|WARNING|WARN)\\\\\")\""
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Container Logs (selected services)",
+      "targets": [
+        {
+          "expr": "{service=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      }
     }
   ],
   "schemaVersion": 39,
   "style": "dark",
-  "tags": ["rag", "support"],
-  "templating": {"list": []},
-  "time": {"from": "now-30m", "to": "now"},
+  "tags": [
+    "rag",
+    "support"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "hide": 0,
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": {
+          "query": "label_values({job=~\"docker|app-file-logs\"}, service)",
+          "refId": "LokiVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": ".+",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".+"
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
   "title": "RAG Support Overview",
   "uid": "rag-support-overview",
-  "version": 1
+  "version": 2
 }
