@@ -2,10 +2,11 @@
 set -euo pipefail
 MODE="offline"
 FORCE_BUILD=0
+ONLINE_STRICT_WHEELS=0
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/update_app.sh [--mode offline|online] [--build]
+Usage: ./scripts/update_app.sh [--mode offline|online] [--build] [--online-strict-wheels|--allow-pypi-fallback]
 
 Options:
   --mode MODE   Режим обновления:
@@ -14,6 +15,10 @@ Options:
   --offline     Эквивалент: --mode offline
   --online      Эквивалент: --mode online
   --build       Принудительная пересборка support-api, даже если входы образа не менялись
+  --online-strict-wheels
+                В режиме online требовать полный wheelhouse и отключать fallback на PyPI
+  --allow-pypi-fallback
+                Явно разрешить fallback на PyPI в режиме online (по умолчанию)
   -h, --help    Показать справку
 USAGE
 }
@@ -111,6 +116,14 @@ while [[ $# -gt 0 ]]; do
       FORCE_BUILD=1
       shift
       ;;
+    --online-strict-wheels)
+      ONLINE_STRICT_WHEELS=1
+      shift
+      ;;
+    --allow-pypi-fallback)
+      ONLINE_STRICT_WHEELS=0
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -136,6 +149,7 @@ cd "$ROOT_DIR"
 require_cmd git
 require_cmd docker
 require_cmd rg
+mkdir -p "$ROOT_DIR/.docker-cache/support-api" "$ROOT_DIR/.docker-cache/ingest"
 
 if [[ ! -f "docker-compose.yml" ]]; then
   fail "В корне проекта не найден docker-compose.yml"
@@ -171,15 +185,26 @@ post_pull_head="$(git rev-parse HEAD)"
 
 if [[ -x "./scripts/preflight_check.sh" ]]; then
   log "Запускаю предпусковую проверку (режим: $MODE)..."
-  ./scripts/preflight_check.sh --mode "$MODE"
+  preflight_args=(--mode "$MODE")
+  if [[ "$MODE" == "online" && "$ONLINE_STRICT_WHEELS" -eq 1 ]]; then
+    preflight_args+=(--online-strict-wheels)
+  fi
+  ./scripts/preflight_check.sh "${preflight_args[@]}"
   ok "Предпусковая проверка пройдена"
 else
   warn "preflight_check.sh не найден/не исполняемый, пропускаю проверку"
 fi
 
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+
 if should_rebuild_support_api "$pre_pull_head" "$post_pull_head" "$MODE"; then
-  log "Запускаю приложение (docker compose up -d --build, PIP_MODE=$MODE)..."
-  PIP_MODE="$MODE" docker compose up -d --build
+  log "Запускаю приложение (docker compose up -d --build, PIP_MODE=$MODE, ONLINE_STRICT_WHEELS=$ONLINE_STRICT_WHEELS)..."
+  if [[ "$MODE" == "online" && "$ONLINE_STRICT_WHEELS" -eq 1 ]]; then
+    PIP_MODE="$MODE" PIP_ONLINE_FALLBACK=0 docker compose up -d --build
+  else
+    PIP_MODE="$MODE" PIP_ONLINE_FALLBACK=1 docker compose up -d --build
+  fi
 else
   log "Запускаю приложение без пересборки образа (docker compose up -d)..."
   docker compose up -d
