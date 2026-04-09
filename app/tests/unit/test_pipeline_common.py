@@ -67,7 +67,11 @@ def test_run_pipeline_processes_supported_files_and_skips_others(monkeypatch, tm
             "images": [f"{path.stem}.png"],
         },
     )
-    monkeypatch.setattr(pipeline_common, "chunk_text", lambda text: [f"{text}-c1", f"{text}-c2"])
+    monkeypatch.setattr(
+        pipeline_common,
+        "chunk_text",
+        lambda text, chunk_size=900, overlap=120, strategy="fixed": [f"{text}-c1", f"{text}-c2"],
+    )
     monkeypatch.setattr(pipeline_common.EmbeddingClient, "embed", lambda text: [0.1, 0.2])
 
     result = pipeline_common.run_pipeline(str(tmp_path), "csv_ans_docs")

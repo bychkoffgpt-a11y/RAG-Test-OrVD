@@ -16,6 +16,12 @@ class Settings(BaseSettings):
 
     embedding_model_path: str = '/models/embeddings/bge-m3'
     reranker_model_path: str = '/models/reranker/bge-reranker-v2-m3'
+    chunk_size_csv_ans_docs: int = 1100
+    chunk_overlap_csv_ans_docs: int = 150
+    chunk_strategy_csv_ans_docs: str = 'docs'
+    chunk_size_internal_regulations: int = 700
+    chunk_overlap_internal_regulations: int = 160
+    chunk_strategy_internal_regulations: str = 'regs'
 
     qdrant_timeout_sec: float = 15.0
 
