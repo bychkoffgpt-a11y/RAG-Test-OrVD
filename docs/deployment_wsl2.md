@@ -65,6 +65,9 @@ cp .env.example .env
 
 ## 3. Проверки GPU (обязательно)
 
+> Обязательное требование для запуска `llm-server`: сервис должен стартовать с `gpus: all` в `docker-compose.yml`; `NVIDIA_VISIBLE_DEVICES` и `NVIDIA_DRIVER_CAPABILITIES` должны быть заданы, но этого недостаточно без `gpus: all`.
+> На старте `llm-server` выполняется fail-fast проверка: если `LLM_N_GPU_LAYERS > 0`, но GPU недоступна в контейнере, контейнер завершается с явной ошибкой.
+
 ## 3.1. Проверка в Windows (PowerShell)
 ```powershell
 nvidia-smi
@@ -237,7 +240,8 @@ docker compose logs --tail=200 loki
 
 1. Нет GPU в контейнере:
    - перепроверьте шаги раздела 3;
-   - проверьте `docker run --rm --gpus all ... nvidia-smi`.
+   - проверьте `docker run --rm --gpus all ... nvidia-smi`;
+   - убедитесь, что в `docker-compose.yml` для `llm-server` присутствует `gpus: all` (а не только `deploy.resources...`).
 
 2. Нет ответов от LLM:
 ```bash

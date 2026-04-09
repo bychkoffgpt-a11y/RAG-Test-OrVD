@@ -46,6 +46,7 @@ services:
     image: ${LLAMA_CPP_IMAGE:-ghcr.io/ggerganov/llama.cpp:server-cuda-b4719}
     container_name: llm-server
     restart: unless-stopped
+    entrypoint: ["/opt/llm_server_entrypoint.sh"]
     command: >
       -m /models/llm/${LLM_MODEL_FILE}
       --host 0.0.0.0
@@ -57,8 +58,10 @@ services:
       --cont-batching
     volumes:
       - ./models:/models:ro
+      - ./scripts/llm_server_entrypoint.sh:/opt/llm_server_entrypoint.sh:ro
     ports:
       - "8080:8080"
+    gpus: all
     deploy:
       resources:
         reservations:
