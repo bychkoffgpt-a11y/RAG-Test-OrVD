@@ -93,7 +93,7 @@ def metrics():
 
 
 @app.post('/v1/chat/completions')
-def openai_compat(payload: dict):
+def openai_compat(payload: dict, request: Request):
     messages = payload.get('messages', [])
     question = ''
     attachments: list[AttachmentItem] = []
@@ -147,7 +147,7 @@ def openai_compat(payload: dict):
     model = payload.get('model', 'local-rag-model')
     is_stream = payload.get('stream') is True
 
-    rendered_answer = append_sources_markdown(answer.answer, answer.sources)
+    rendered_answer = append_sources_markdown(answer.answer, answer.sources, base_url=str(request.base_url))
 
     if is_stream:
         def event_stream():

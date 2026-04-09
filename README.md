@@ -52,7 +52,7 @@ docker compose version
 ### Обязательное требование для `llm-server` (GPU)
 - В `docker-compose.yml` для `llm-server` обязательно задано `gpus: all` (нельзя полагаться только на `deploy.resources...`).
 - Переменные `NVIDIA_VISIBLE_DEVICES=all` и `NVIDIA_DRIVER_CAPABILITIES=compute,utility` должны оставаться включёнными.
-- На старте контейнера выполняется fail-fast проверка: если `LLM_N_GPU_LAYERS > 0`, но GPU в контейнере недоступна, `llm-server` завершится с понятной ошибкой.
+- На старте контейнера больше не выполняется принудительное переключение на CPU: сервис сохраняет заданный `-ngl`, чтобы не ломать GPU-режим в окружениях, где CUDA доступна, но `/dev/nvidia*` определяется нестандартно.
 
 ## Быстрый старт
 ```bash

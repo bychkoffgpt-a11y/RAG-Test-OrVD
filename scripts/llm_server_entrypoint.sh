@@ -10,18 +10,10 @@ case "${LLM_N_GPU_LAYERS_VALUE}" in
     ;;
 esac
 
-if [ "${LLM_N_GPU_LAYERS_VALUE}" -gt 0 ]; then
-  if [ ! -e /dev/nvidiactl ] && [ ! -e /dev/nvidia0 ]; then
-    echo "ERROR: LLM_N_GPU_LAYERS=${LLM_N_GPU_LAYERS_VALUE}, but NVIDIA GPU devices are not available inside llm-server container." >&2
-    echo "Ensure Docker Compose service 'llm-server' has 'gpus: all' and the host has a working NVIDIA Container Toolkit/WSL2 GPU setup." >&2
-    exit 65
-  fi
-
-  if command -v nvidia-smi >/dev/null 2>&1; then
-    if ! nvidia-smi -L >/dev/null 2>&1; then
-      echo "ERROR: LLM_N_GPU_LAYERS=${LLM_N_GPU_LAYERS_VALUE}, but nvidia-smi cannot access GPU from inside llm-server container." >&2
-      exit 66
-    fi
+if [ "${LLM_N_GPU_LAYERS_VALUE}" -gt 0 ] && command -v nvidia-smi >/dev/null 2>&1; then
+  if ! nvidia-smi -L >/dev/null 2>&1; then
+    echo "WARN: LLM_N_GPU_LAYERS=${LLM_N_GPU_LAYERS_VALUE}, but nvidia-smi cannot access GPU from inside llm-server container." >&2
+    echo "Proceeding with configured '-ngl ${LLM_N_GPU_LAYERS_VALUE}' (no forced CPU fallback)." >&2
   fi
 fi
 

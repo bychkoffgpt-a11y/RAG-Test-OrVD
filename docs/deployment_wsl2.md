@@ -66,7 +66,7 @@ cp .env.example .env
 ## 3. Проверки GPU (обязательно)
 
 > Обязательное требование для запуска `llm-server`: сервис должен стартовать с `gpus: all` в `docker-compose.yml`; `NVIDIA_VISIBLE_DEVICES` и `NVIDIA_DRIVER_CAPABILITIES` должны быть заданы, но этого недостаточно без `gpus: all`.
-> На старте `llm-server` выполняется fail-fast проверка: если `LLM_N_GPU_LAYERS > 0`, но GPU недоступна в контейнере, контейнер завершается с явной ошибкой.
+> На старте `llm-server` не выполняется принудительный fallback на CPU при неоднозначной детекции GPU: сохраняется конфигурация `LLM_N_GPU_LAYERS`, а диагностика делается через `nvidia-smi` и логи llama.cpp.
 
 ## 3.1. Проверка в Windows (PowerShell)
 ```powershell
@@ -208,6 +208,20 @@ curl -OJ http://localhost:8000/sources/csv_ans_docs/<DOC_ID>/download
 docker compose logs --tail=200 support-api
 docker compose logs --tail=200 promtail
 docker compose logs --tail=200 loki
+```
+
+## 7.4. Преднастроенные alert-шаблоны Grafana (warning/error по всем сервисам)
+- Alert-правила provisioned из файла `infra/grafana/provisioning/alerting/log-severity-rules.yaml`.
+- Правила создаются автоматически при старте контейнера `grafana` и сохраняются для всех пользователей инстанса (не нужно настраивать вручную в новой сессии).
+- Список преднастроенных правил:
+  1. `[Logs] Errors in any service > 0 (5m)` — критический уровень, срабатывает при любых error/fatal/exception логах.
+  2. `[Logs] Warning burst in any service > 20 (10m)` — warning-уровень, всплеск предупреждений.
+  3. `[Logs] Error spike in any service > 15 (5m)` — критический уровень, резкий рост ошибок.
+
+Проверка, что правила загружены:
+```bash
+docker compose restart grafana
+docker compose logs --tail=200 grafana
 ```
 
 ---
