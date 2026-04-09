@@ -1,3 +1,6 @@
+from urllib.parse import urljoin
+
+
 def collect_images(contexts: list[dict]) -> list[str]:
     images: list[str] = []
     for item in contexts:
@@ -7,7 +10,15 @@ def collect_images(contexts: list[dict]) -> list[str]:
     return images
 
 
-def append_sources_markdown(answer: str, sources: list) -> str:
+def _to_public_url(download_url: str, base_url: str | None = None) -> str:
+    if download_url.startswith(('http://', 'https://')):
+        return download_url
+    if not base_url:
+        return download_url
+    return urljoin(base_url, download_url.lstrip('/'))
+
+
+def append_sources_markdown(answer: str, sources: list, base_url: str | None = None) -> str:
     if not sources:
         return answer
 
@@ -25,7 +36,9 @@ def append_sources_markdown(answer: str, sources: list) -> str:
         if key in seen:
             continue
         seen.add(key)
-        lines.append(f"- [{source_type}/{doc_id}]({download_url})")
+
+        public_url = _to_public_url(download_url, base_url)
+        lines.append(f'- {source_type}/{doc_id}: {public_url}')
 
     if not lines:
         return answer
