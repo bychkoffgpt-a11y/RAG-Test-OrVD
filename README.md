@@ -115,6 +115,26 @@ docker compose build \
 - [Эксплуатация](docs/operations.md)
 - [Single-cutover мультимодальный запуск](docs/multimodal_single_cutover.md)
 
+## Регрессионная проверка OCR/Vision/Retrieval (5 кейсов)
+В репозитории добавлен автоскрипт `scripts/run_vision_regression.py`, который:
+- генерирует контрольные изображения и PDF с embedded-изображением в `data/`;
+- запускает 5 positive/negative проверок мультимодального API;
+- делает ingestion корпуса A и проверяет retrieval по image-derived OCR-маркеру;
+- печатает единый PASS/FAIL отчёт и завершает работу с ненулевым кодом при фейле.
+
+Быстрый запуск:
+```bash
+python3 scripts/run_vision_regression.py --api-url http://localhost:8000
+```
+
+Полезные флаги:
+```bash
+python3 scripts/run_vision_regression.py --help
+python3 scripts/run_vision_regression.py --marker-token ERR-9A7K-UNIQUE
+python3 scripts/run_vision_regression.py --prefer-docker-for-assets
+```
+
+> Скрипт ожидает, что `./data` смонтирован в `support-api` как `/data` (штатная конфигурация `docker-compose.yml`).
 
 ## Автотесты
 Базовый стек автотестов:
