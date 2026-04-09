@@ -11,6 +11,8 @@ ARG PIP_TRUSTED_HOST=
 ARG PIP_MODE=auto
 ARG PIP_ONLINE_FALLBACK=1
 ARG INCLUDE_INGEST_DEPS=0
+ARG TORCH_DEVICE=cuda
+ARG PYTORCH_CUDA_INDEX_URL=https://download.pytorch.org/whl/cu124
 
 RUN set -euo pipefail; \
     apt-get update; \
@@ -112,6 +114,16 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         echo "[FAIL] pip install не смог загрузить зависимости из индекса."; \
         exit 1; \
       }; \
+    fi
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    set -euo pipefail; \
+    if [ "${TORCH_DEVICE}" = "cuda" ]; then \
+      echo "[INFO] Enforcing CUDA-enabled torch build for support-api"; \
+      python3 -m pip install --upgrade --index-url="${PYTORCH_CUDA_INDEX_URL}" torch torchvision torchaudio; \
+      python3 -c "import torch; assert torch.version.cuda is not None, '[FAIL] torch installed without CUDA support, but TORCH_DEVICE=cuda requested'; print(f'[INFO] torch CUDA runtime: {torch.version.cuda}')"; \
+    else \
+      echo "[INFO] TORCH_DEVICE=${TORCH_DEVICE}: skipping forced CUDA torch install"; \
     fi
 
 COPY src /app/src

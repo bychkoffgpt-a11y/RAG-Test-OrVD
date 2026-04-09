@@ -12,6 +12,29 @@ logger = logging.getLogger(__name__)
 class RerankerClient:
     _model = None
 
+    @staticmethod
+    def _resolve_device(preferred: str) -> str:
+        normalized = preferred.strip().lower()
+        if normalized not in {'auto', 'cpu', 'cuda'}:
+            raise ValueError(f'Unsupported reranker device: {preferred}')
+
+        if normalized == 'cpu':
+            return 'cpu'
+
+        try:
+            import torch
+        except Exception:
+            if normalized == 'cuda':
+                raise RuntimeError('CUDA device requested for reranker, but torch is unavailable')
+            return 'cpu'
+
+        if normalized == 'cuda':
+            if not torch.cuda.is_available():
+                raise RuntimeError('CUDA device requested for reranker, but no CUDA device is available')
+            return 'cuda'
+
+        return 'cuda' if torch.cuda.is_available() else 'cpu'
+
     @classmethod
     def model(cls) -> CrossEncoder:
         if cls._model is None:
@@ -24,9 +47,10 @@ class RerankerClient:
                         'Проверьте модельные артефакты перед запуском.'
                     )
 
-            logger.info('reranker_model_load_started', extra={'model_path': str(model_path)})
-            cls._model = CrossEncoder(str(model_path), local_files_only=True)
-            logger.info('reranker_model_load_finished', extra={'model_path': str(model_path)})
+            device = cls._resolve_device(settings.reranker_device)
+            logger.info('reranker_model_load_started', extra={'model_path': str(model_path), 'device': device})
+            cls._model = CrossEncoder(str(model_path), local_files_only=True, device=device)
+            logger.info('reranker_model_load_finished', extra={'model_path': str(model_path), 'device': device})
         return cls._model
 
     @classmethod
@@ -34,5 +58,5 @@ class RerankerClient:
         if not documents:
             return []
         pairs = [[query, doc] for doc in documents]
-        scores = cls.model().predict(pairs)
+        scores = cls.model().predict(pairs, show_progress_bar=False)
         return [float(score) for score in scores]
