@@ -32,6 +32,7 @@ def test_build_prompt_includes_question_and_contexts():
     assert "[1] Шаг 1: открыть заявку." in prompt
     assert "источник: csv_ans_docs/DOC-1, стр. 2" in prompt
     assert "[2] Шаг 2: подтвердить личность." in prompt
-    assert "источник: internal_regulations/REG-7, стр. None" in prompt
+    assert "источник: internal_regulations/REG-7)" in prompt
+    assert "стр. None" not in prompt
     assert 'Сигналы со скриншотов' in prompt
     assert 'HTTP 500 Internal Server Error' in prompt

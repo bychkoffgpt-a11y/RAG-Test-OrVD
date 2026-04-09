@@ -1,8 +1,11 @@
 def build_prompt(question: str, contexts: list[dict], visual_evidence: list[dict] | None = None) -> str:
     context_lines = []
     for idx, item in enumerate(contexts, start=1):
+        source_label = f"{item['source_type']}/{item['doc_id']}"
+        page_number = item.get('page_number')
+        page_suffix = f", стр. {page_number}" if page_number is not None else ''
         context_lines.append(
-            f"[{idx}] {item['text']} (источник: {item['source_type']}/{item['doc_id']}, стр. {item.get('page_number')})"
+            f"[{idx}] {item['text']} (источник: {source_label}{page_suffix})"
         )
 
     evidence_lines = []
