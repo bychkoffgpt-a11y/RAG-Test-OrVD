@@ -8,6 +8,7 @@ ENV PYTHONUNBUFFERED=1 \
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ARG PIP_EXTRA_INDEX_URL=
 ARG PIP_TRUSTED_HOST=
+ARG PIP_MODE=auto
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice \
@@ -24,7 +25,30 @@ COPY src /app/src
 COPY wheels /wheels
 
 RUN set -euo pipefail; \
-    if [ -n "$(find /wheels -mindepth 1 -maxdepth 1 -type f -name '*.whl' -print -quit)" ]; then \
+    if [ "${PIP_MODE}" = "offline" ]; then \
+      echo "[INFO] pip mode: forced offline (PIP_MODE=offline)"; \
+      pip install --no-index --find-links=/wheels --no-build-isolation . ; \
+    elif [ "${PIP_MODE}" = "online" ]; then \
+      echo "[INFO] pip mode: forced online (PIP_MODE=online)"; \
+      python -c "import socket, ssl; ctx = ssl.create_default_context(); sock = socket.create_connection(('pypi.org', 443), timeout=10); wrapped = ctx.wrap_socket(sock, server_hostname='pypi.org'); wrapped.close(); print('[INFO] TLS precheck to pypi.org:443 passed')" \
+      || { \
+        echo "[FAIL] TLS precheck to pypi.org:443 failed. Проверьте доступ в интернет, proxy и CA-сертификаты Docker host."; \
+        exit 1; \
+      }; \
+      pip_args="--retries 10 --index-url=${PIP_INDEX_URL} --no-build-isolation"; \
+      if [ -n "${PIP_EXTRA_INDEX_URL}" ]; then \
+        pip_args="${pip_args} --extra-index-url=${PIP_EXTRA_INDEX_URL}"; \
+      fi; \
+      if [ -n "${PIP_TRUSTED_HOST}" ]; then \
+        pip_args="${pip_args} --trusted-host=${PIP_TRUSTED_HOST}"; \
+      fi; \
+      # shellcheck disable=SC2086 \
+      pip install ${pip_args} . \
+      || { \
+        echo "[FAIL] pip install не смог загрузить зависимости из индекса. Для закрытого контура подготовьте app/wheels и используйте офлайн-сборку."; \
+        exit 1; \
+      }; \
+    elif [ -n "$(find /wheels -mindepth 1 -maxdepth 1 -type f -name '*.whl' -print -quit)" ]; then \
       echo "[INFO] pip mode: offline wheels (/wheels)"; \
       pip install --no-index --find-links=/wheels --no-build-isolation . ; \
     else \

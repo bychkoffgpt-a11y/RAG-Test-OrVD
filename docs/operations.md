@@ -90,10 +90,12 @@ docker compose up -d --build
 ### Вариант 1 — онлайн-сборка (по умолчанию)
 - При `docker compose build`/`up --build` используется `pip install` с повышенными retry/timeout.
 - Этот режим требует доступ к PyPI.
+- В режиме online принудительно используется `PIP_MODE=online`, поэтому даже при наличии `app/wheels/*.whl` зависимости ставятся из индекса (это защищает от падения на неполном wheelhouse).
 - Перед установкой выполняется TLS precheck к `pypi.org:443`; при проблемах выводится явная диагностика по сети/сертификатам.
 - Можно использовать кастомный индекс/зеркало через build args:
   ```bash
   docker compose build support-api \
+    --build-arg PIP_MODE=online \
     --build-arg PIP_INDEX_URL=https://pypi.org/simple \
     --build-arg PIP_EXTRA_INDEX_URL= \
     --build-arg PIP_TRUSTED_HOST=
@@ -126,6 +128,10 @@ docker compose up -d --build
    docker compose build --no-cache ingest-a support-api
    ```
 4. Убедиться, что зависимости ставятся из `/wheels` (в логах pip будет `--no-index --find-links=/wheels`).
+   При ручном запуске можно явно зафиксировать офлайн-режим:
+   ```bash
+   PIP_MODE=offline docker compose build --no-cache support-api
+   ```
 
 ## Где размещать документы
 - Корпус A: `data/inbox/csv_ans_docs`

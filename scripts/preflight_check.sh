@@ -163,7 +163,7 @@ check_wheelhouse_by_mode() {
     online)
       require_dir "$dir"
       if find "$dir" -mindepth 1 -maxdepth 1 -type f -name '*.whl' -print -quit | grep -q .; then
-        ok "Найдены wheel-пакеты (будут использованы при сборке): $dir"
+        ok "Найдены wheel-пакеты: $dir (в режиме online будет принудительная установка из PyPI)"
       else
         warn "wheelhouse пустой: $dir. В режиме online это допустимо, зависимости будут ставиться из PyPI."
       fi

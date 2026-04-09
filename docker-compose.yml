@@ -73,6 +73,8 @@ services:
     build:
       context: ./app
       dockerfile: Dockerfile
+      args:
+        PIP_MODE: ${PIP_MODE:-auto}
     container_name: support-api
     restart: unless-stopped
     env_file: [.env]
@@ -175,6 +177,8 @@ services:
     build:
       context: ./app
       dockerfile: Dockerfile
+      args:
+        PIP_MODE: ${PIP_MODE:-auto}
     profiles: ["manual"]
     env_file: [.env]
     environment:
@@ -199,6 +203,8 @@ services:
     build:
       context: ./app
       dockerfile: Dockerfile
+      args:
+        PIP_MODE: ${PIP_MODE:-auto}
     profiles: ["manual"]
     env_file: [.env]
     environment:
