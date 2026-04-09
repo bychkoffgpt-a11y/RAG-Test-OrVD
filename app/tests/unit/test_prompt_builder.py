@@ -36,3 +36,4 @@ def test_build_prompt_includes_question_and_contexts():
     assert "стр. None" not in prompt
     assert 'Сигналы со скриншотов' in prompt
     assert 'HTTP 500 Internal Server Error' in prompt
+    assert 'выводи все пункты полностью' in prompt

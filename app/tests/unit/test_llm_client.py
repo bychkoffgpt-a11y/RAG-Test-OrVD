@@ -120,3 +120,58 @@ def test_generate_rewrites_non_russian_answer(monkeypatch):
 
     assert answer == 'По предоставленной информации проверьте маршрут документа.'
     assert len(calls) == 2
+
+
+def test_generate_continues_truncated_answer(monkeypatch):
+    calls: list[tuple[str, dict]] = []
+
+    class _Resp:
+        def __init__(self, status_code: int, data: dict):
+            self.status_code = status_code
+            self._data = data
+
+        def json(self):
+            return self._data
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise httpx.HTTPStatusError('error', request=None, response=None)
+
+    def _fake_post(url, json, timeout):
+        calls.append((url, json))
+        if len(calls) == 1:
+            return _Resp(
+                200,
+                {
+                    'choices': [
+                        {
+                            'message': {
+                                'content': (
+                                    '1. Шаг один выполните полностью и аккуратно.\n'
+                                    '2. Затем проверьте статусы документов в архиве.\n'
+                                    '3. Если документы не подписаны Э'
+                                ),
+                            }
+                        }
+                    ]
+                },
+            )
+        return _Resp(
+            200,
+            {
+                'choices': [
+                    {
+                        'message': {
+                            'content': 'ЭДО, проверьте подпись и повторите отправку.',
+                        }
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(httpx, 'post', _fake_post)
+
+    answer = LlmClient().generate('Почему завис пакет?')
+
+    assert 'Если документы не подписаны Э ЭДО' in answer
+    assert len(calls) == 2

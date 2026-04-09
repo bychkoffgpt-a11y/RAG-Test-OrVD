@@ -42,3 +42,15 @@ def test_chunk_text_invalid_overlap():
         assert 'overlap' in str(exc)
     else:
         raise AssertionError('Ожидался ValueError при overlap >= chunk_size')
+
+
+def test_chunk_text_splits_long_block_near_sentence_boundary():
+    text = (
+        'Это длинное предложение для проверки разбиения. '
+        'Второе предложение должно попасть в следующий чанк без обрезки слов. '
+        'Третье предложение завершает абзац.'
+    )
+    chunks = chunk_text(text, chunk_size=90, overlap=15)
+
+    assert len(chunks) >= 2
+    assert not any(chunk.endswith('следую') for chunk in chunks)
