@@ -43,3 +43,19 @@ class PostgresRepo:
                 ),
             )
             conn.commit()
+
+    def get_document_file_name(self, source_type: str, doc_id: str) -> str | None:
+        with connect(self.dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT file_name
+                FROM documents
+                WHERE source_type = %s AND doc_id = %s
+                LIMIT 1
+                """,
+                (source_type, doc_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return row[0]

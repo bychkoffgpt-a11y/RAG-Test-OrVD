@@ -15,6 +15,7 @@ class SourceItem(BaseModel):
     chunk_id: str
     score: float
     image_paths: List[str] = []
+    download_url: str | None = None
 
 
 class AskResponse(BaseModel):

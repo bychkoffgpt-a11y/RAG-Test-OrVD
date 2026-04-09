@@ -11,6 +11,10 @@ from src.rag.retriever import Retriever
 logger = logging.getLogger(__name__)
 
 
+def _build_download_url(source_type: str, doc_id: str) -> str:
+    return f'/sources/{source_type}/{doc_id}/download'
+
+
 class RagOrchestrator:
     def __init__(self) -> None:
         self.retriever = Retriever()
@@ -62,6 +66,7 @@ class RagOrchestrator:
                 chunk_id=item['chunk_id'],
                 score=item['score'],
                 image_paths=item.get('image_paths', []),
+                download_url=_build_download_url(item['source_type'], item['doc_id']),
             )
             for item in contexts
         ]

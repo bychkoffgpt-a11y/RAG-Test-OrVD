@@ -179,8 +179,13 @@ curl -X POST http://localhost:8000/ask \
 
 Ожидаемо:
 - поле `answer`;
-- массив `sources`;
+- массив `sources` (включая `download_url` для каждого источника);
 - массив `images` (может быть пустым, если в источниках нет картинок).
+
+Проверка скачивания документа-источника:
+```bash
+curl -OJ http://localhost:8000/sources/csv_ans_docs/<DOC_ID>/download
+```
 
 ---
 
