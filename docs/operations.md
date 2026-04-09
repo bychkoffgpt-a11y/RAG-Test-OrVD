@@ -51,6 +51,19 @@ pytest -q --cov=src --cov-report=term-missing
 - Статус: `docker compose ps`
 - Логи API: `docker compose logs -f support-api`
 
+## Преднастроенные alert-шаблоны Grafana (warning/error)
+- Alert-правила загружаются через provisioning из `infra/grafana/provisioning/alerting/log-severity-rules.yaml`.
+- Это глобальные правила инстанса Grafana (доступны всем пользователям без ручной настройки после новой сессии).
+- В комплекте 3 правила:
+  - `[Logs] Errors in any service > 0 (5m)` — любое появление error/fatal/exception.
+  - `[Logs] Warning burst in any service > 20 (10m)` — всплеск предупреждений.
+  - `[Logs] Error spike in any service > 15 (5m)` — всплеск ошибок.
+
+Если изменили provisioning-файл, перезапустите Grafana:
+```bash
+docker compose restart grafana
+```
+
 ## Безопасное обновление и перезапуск приложения
 > Рекомендуемый способ обновления — скрипт `scripts/update_app.sh`.
 
