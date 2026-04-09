@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 class EmbeddingClient:
     _model = None
+    _device = None
 
     @staticmethod
     def _resolve_device(preferred: str) -> str:
@@ -46,13 +47,54 @@ class EmbeddingClient:
                         'Проверьте модельные артефакты перед запуском.'
                     )
 
-            device = cls._resolve_device(settings.embedding_device)
-            logger.info('embedding_model_load_started', extra={'model_path': str(model_path), 'device': device})
-            cls._model = SentenceTransformer(str(model_path), local_files_only=True, device=device)
-            logger.info('embedding_model_load_finished', extra={'model_path': str(model_path), 'device': device})
+            resolved_device = cls._resolve_device(settings.embedding_device)
+            cls._load_model(model_path, resolved_device)
         return cls._model
 
     @classmethod
     def embed(cls, text: str) -> list[float]:
-        vector = cls.model().encode(text, normalize_embeddings=True, show_progress_bar=False)
+        model = cls.model()
+        try:
+            vector = model.encode(text, normalize_embeddings=True, show_progress_bar=False)
+        except RuntimeError as exc:
+            if cls._device != 'cuda' or not cls._is_cuda_runtime_error(exc):
+                raise
+
+            model_path = Path(settings.embedding_model_path)
+            logger.warning(
+                'embedding_cuda_encode_failed_fallback_cpu',
+                extra={'model_path': str(model_path), 'device': cls._device, 'error': str(exc)},
+            )
+            cls._load_model(model_path, 'cpu')
+            vector = cls._model.encode(text, normalize_embeddings=True, show_progress_bar=False)
         return vector.tolist()
+
+    @classmethod
+    def _load_model(cls, model_path: Path, device: str) -> None:
+        logger.info('embedding_model_load_started', extra={'model_path': str(model_path), 'device': device})
+        try:
+            cls._model = SentenceTransformer(str(model_path), local_files_only=True, device=device)
+            cls._device = device
+            logger.info('embedding_model_load_finished', extra={'model_path': str(model_path), 'device': device})
+        except RuntimeError as exc:
+            if device != 'cuda' or not cls._is_cuda_runtime_error(exc):
+                raise
+
+            logger.warning(
+                'embedding_cuda_load_failed_fallback_cpu',
+                extra={'model_path': str(model_path), 'device': device, 'error': str(exc)},
+            )
+            cls._model = SentenceTransformer(str(model_path), local_files_only=True, device='cpu')
+            cls._device = 'cpu'
+            logger.info('embedding_model_load_finished', extra={'model_path': str(model_path), 'device': 'cpu'})
+
+    @staticmethod
+    def _is_cuda_runtime_error(error: RuntimeError) -> bool:
+        message = str(error).lower()
+        cuda_markers = (
+            'cuda error',
+            'no kernel image is available for execution on the device',
+            'device-side assert',
+            'invalid device function',
+        )
+        return any(marker in message for marker in cuda_markers)
