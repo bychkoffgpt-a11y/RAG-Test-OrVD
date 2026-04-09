@@ -50,7 +50,28 @@ RUN set -euo pipefail; \
       }; \
     elif [ -n "$(find /wheels -mindepth 1 -maxdepth 1 -type f -name '*.whl' -print -quit)" ]; then \
       echo "[INFO] pip mode: offline wheels (/wheels)"; \
-      pip install --no-index --find-links=/wheels --no-build-isolation . ; \
+      pip install --no-index --find-links=/wheels --no-build-isolation . \
+      || { \
+        echo "[WARN] Установка из wheelhouse не удалась. Переключаюсь на онлайн-установку из PyPI (PIP_MODE=auto)."; \
+        python -c "import socket, ssl; ctx = ssl.create_default_context(); sock = socket.create_connection(('pypi.org', 443), timeout=10); wrapped = ctx.wrap_socket(sock, server_hostname='pypi.org'); wrapped.close(); print('[INFO] TLS precheck to pypi.org:443 passed')" \
+        || { \
+          echo "[FAIL] TLS precheck to pypi.org:443 failed. Проверьте доступ в интернет, proxy и CA-сертификаты Docker host."; \
+          exit 1; \
+        }; \
+        pip_args="--retries 10 --index-url=${PIP_INDEX_URL} --no-build-isolation"; \
+        if [ -n "${PIP_EXTRA_INDEX_URL}" ]; then \
+          pip_args="${pip_args} --extra-index-url=${PIP_EXTRA_INDEX_URL}"; \
+        fi; \
+        if [ -n "${PIP_TRUSTED_HOST}" ]; then \
+          pip_args="${pip_args} --trusted-host=${PIP_TRUSTED_HOST}"; \
+        fi; \
+        # shellcheck disable=SC2086 \
+        pip install ${pip_args} . \
+        || { \
+          echo "[FAIL] pip install не смог загрузить зависимости ни из wheelhouse, ни из индекса. Для закрытого контура подготовьте полный набор app/wheels."; \
+          exit 1; \
+        }; \
+      }; \
     else \
       echo "[WARN] pip mode: online PyPI (wheelhouse is empty)"; \
       python -c "import socket, ssl; ctx = ssl.create_default_context(); sock = socket.create_connection(('pypi.org', 443), timeout=10); wrapped = ctx.wrap_socket(sock, server_hostname='pypi.org'); wrapped.close(); print('[INFO] TLS precheck to pypi.org:443 passed')" \
