@@ -119,8 +119,8 @@ else
   log "preflight_check.sh не найден/не исполняемый, пропускаю проверку"
 fi
 
-log "Запускаю приложение (docker compose up -d --build)..."
-docker compose up -d --build
+log "Запускаю приложение (docker compose up -d --build, PIP_MODE=$MODE)..."
+PIP_MODE="$MODE" docker compose up -d --build
 ok "Приложение запущено"
 
 log "Готово: стек обновлён и перезапущен."
