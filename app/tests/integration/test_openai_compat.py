@@ -9,6 +9,8 @@ import src.main as main_module
 @dataclass
 class DummySource:
     doc_id: str = 'doc-1'
+    source_type: str = 'csv_ans_docs'
+    download_url: str = '/sources/csv_ans_docs/doc-1/download'
 
     def model_dump(self):
         return {'doc_id': self.doc_id}
@@ -47,7 +49,9 @@ def test_chat_completions_non_stream_returns_200(monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert data['object'] == 'chat.completion'
-    assert data['choices'][0]['message']['content'] == 'Тестовый ответ'
+    assert 'Тестовый ответ' in data['choices'][0]['message']['content']
+    assert 'Источники для скачивания' in data['choices'][0]['message']['content']
+    assert '/sources/csv_ans_docs/doc-1/download' in data['choices'][0]['message']['content']
 
 
 def test_chat_completions_stream_returns_sse_chunks(monkeypatch):
@@ -88,7 +92,7 @@ def test_chat_completions_uses_last_user_message(monkeypatch):
 
     assert response.status_code == 200
     data = response.json()
-    assert data['choices'][0]['message']['content'] == 'Тестовый ответ'
+    assert 'Тестовый ответ' in data['choices'][0]['message']['content']
 
 
 def test_chat_completions_accepts_null_generation_params(monkeypatch):

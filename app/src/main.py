@@ -15,6 +15,7 @@ from src.api.sources import router as sources_router
 from src.api.schemas import AskRequest
 from src.core.logging import configure_logging
 from src.core.request_context import reset_request_id, set_request_id
+from src.rag.answer_formatter import append_sources_markdown
 from src.rag.orchestrator import RagOrchestrator
 from src.telemetry.metrics import HTTP_LATENCY, HTTP_REQUESTS, metrics_response
 
@@ -113,6 +114,8 @@ def openai_compat(payload: dict):
     model = payload.get('model', 'local-rag-model')
     is_stream = payload.get('stream') is True
 
+    rendered_answer = append_sources_markdown(answer.answer, answer.sources)
+
     if is_stream:
         def event_stream():
             first_chunk = {
@@ -129,7 +132,7 @@ def openai_compat(payload: dict):
                 'object': 'chat.completion.chunk',
                 'created': created,
                 'model': model,
-                'choices': [{'index': 0, 'delta': {'content': answer.answer}, 'finish_reason': None}],
+                'choices': [{'index': 0, 'delta': {'content': rendered_answer}, 'finish_reason': None}],
             }
             yield f'data: {json.dumps(content_chunk, ensure_ascii=False)}\n\n'
 
@@ -153,7 +156,7 @@ def openai_compat(payload: dict):
         'choices': [
             {
                 'index': 0,
-                'message': {'role': 'assistant', 'content': answer.answer},
+                'message': {'role': 'assistant', 'content': rendered_answer},
                 'finish_reason': 'stop',
             }
         ],
