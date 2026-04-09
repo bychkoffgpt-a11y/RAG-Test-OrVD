@@ -7,6 +7,17 @@
 - Embeddings: `BAAI/bge-m3` (локально в `models/embeddings/bge-m3/`)
 - Reranker: `BAAI/bge-reranker-v2-m3` (локально в `models/reranker/bge-reranker-v2-m3/`; артефакт проверяется preflight, но в текущем retrieval-пайплайне не задействован)
 
+## GPU-ускорение retrieval в `support-api`
+- `support-api` может выполнять embeddings и reranker на GPU (`cuda`) через `sentence-transformers`.
+- По умолчанию в `.env.example` включён CUDA-режим:
+  - `SUPPORT_API_TORCH_DEVICE=cuda`
+  - `EMBEDDING_DEVICE=cuda`
+  - `RERANKER_DEVICE=cuda`
+- Для принудительного CPU-режима переопределите:
+  - `SUPPORT_API_TORCH_DEVICE=cpu`
+  - `EMBEDDING_DEVICE=cpu`
+  - `RERANKER_DEVICE=cpu`
+
 ## Состав решения
 - Open WebUI (чат-интерфейс)
 - FastAPI (кастомный backend)

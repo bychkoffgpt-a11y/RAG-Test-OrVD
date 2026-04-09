@@ -16,6 +16,8 @@ class Settings(BaseSettings):
 
     embedding_model_path: str = '/models/embeddings/bge-m3'
     reranker_model_path: str = '/models/reranker/bge-reranker-v2-m3'
+    embedding_device: str = 'auto'
+    reranker_device: str = 'auto'
     chunk_size_csv_ans_docs: int = 1100
     chunk_overlap_csv_ans_docs: int = 150
     chunk_strategy_csv_ans_docs: str = 'docs'
