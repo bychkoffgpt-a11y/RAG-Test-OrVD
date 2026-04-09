@@ -41,6 +41,11 @@ docker compose version
 
 Если видите ошибку `docker: command not found`, сначала выполните подготовку из подробной инструкции: [`docs/deployment_wsl2.md`](docs/deployment_wsl2.md#1-предварительные-условия).
 
+### Обязательное требование для `llm-server` (GPU)
+- В `docker-compose.yml` для `llm-server` обязательно задано `gpus: all` (нельзя полагаться только на `deploy.resources...`).
+- Переменные `NVIDIA_VISIBLE_DEVICES=all` и `NVIDIA_DRIVER_CAPABILITIES=compute,utility` должны оставаться включёнными.
+- На старте контейнера выполняется fail-fast проверка: если `LLM_N_GPU_LAYERS > 0`, но GPU в контейнере недоступна, `llm-server` завершится с понятной ошибкой.
+
 ## Быстрый старт
 ```bash
 cp .env.example .env
