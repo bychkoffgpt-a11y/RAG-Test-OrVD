@@ -66,7 +66,7 @@ cp .env.example .env
 ## 3. Проверки GPU (обязательно)
 
 > Обязательное требование для запуска `llm-server`: сервис должен стартовать с `gpus: all` в `docker-compose.yml`; `NVIDIA_VISIBLE_DEVICES` и `NVIDIA_DRIVER_CAPABILITIES` должны быть заданы, но этого недостаточно без `gpus: all`.
-> На старте `llm-server` выполняется fail-fast проверка: если `LLM_N_GPU_LAYERS > 0`, но GPU недоступна в контейнере, контейнер завершается с явной ошибкой.
+> На старте `llm-server` не выполняется принудительный fallback на CPU при неоднозначной детекции GPU: сохраняется конфигурация `LLM_N_GPU_LAYERS`, а диагностика делается через `nvidia-smi` и логи llama.cpp.
 
 ## 3.1. Проверка в Windows (PowerShell)
 ```powershell
