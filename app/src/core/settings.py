@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     reranker_model_path: str = '/models/reranker/bge-reranker-v2-m3'
     embedding_device: str = 'auto'
     reranker_device: str = 'auto'
+
+    vision_enabled: bool = True
+    vision_model_path: str = '/models/vision/qwen3-vl-2b-instruct'
+    vision_ocr_model_root: str = '/models/ocr'
+    vision_ocr_lang: str = 'ru'
+    vision_ocr_use_angle_cls: bool = True
+    vision_ocr_show_log: bool = False
     chunk_size_csv_ans_docs: int = 1100
     chunk_overlap_csv_ans_docs: int = 150
     chunk_strategy_csv_ans_docs: str = 'docs'

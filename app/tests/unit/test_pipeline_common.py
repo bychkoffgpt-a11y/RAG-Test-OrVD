@@ -12,13 +12,21 @@ def test_parse_file_routes_docx_pdf_doc(monkeypatch, tmp_path):
     for p in (docx_path, pdf_path, doc_path):
         p.write_text("x")
 
-    monkeypatch.setattr(pipeline_common, "parse_docx", lambda p: {"text": f"docx:{Path(p).name}"})
-    monkeypatch.setattr(pipeline_common, "parse_pdf", lambda p: {"text": f"pdf:{Path(p).name}"})
+    monkeypatch.setattr(
+        pipeline_common,
+        "parse_docx",
+        lambda p, source_type='unknown', doc_id=None: {"text": f"docx:{Path(p).name}"},
+    )
+    monkeypatch.setattr(
+        pipeline_common,
+        "parse_pdf",
+        lambda p, source_type='unknown', doc_id=None: {"text": f"pdf:{Path(p).name}"},
+    )
     monkeypatch.setattr(pipeline_common, "convert_doc_to_docx", lambda p: str(tmp_path / "converted.docx"))
 
-    assert pipeline_common._parse_file(docx_path)["text"] == "docx:file.docx"
-    assert pipeline_common._parse_file(pdf_path)["text"] == "pdf:file.pdf"
-    assert pipeline_common._parse_file(doc_path)["text"] == "docx:converted.docx"
+    assert pipeline_common._parse_file(docx_path, 'csv_ans_docs')["text"] == "docx:file.docx"
+    assert pipeline_common._parse_file(pdf_path, 'csv_ans_docs')["text"] == "pdf:file.pdf"
+    assert pipeline_common._parse_file(doc_path, 'csv_ans_docs')["text"] == "docx:converted.docx"
 
 
 def test_parse_file_rejects_unsupported_extension(tmp_path):
@@ -26,7 +34,7 @@ def test_parse_file_rejects_unsupported_extension(tmp_path):
     txt_path.write_text("hello")
 
     with pytest.raises(ValueError, match="Неподдерживаемый формат"):
-        pipeline_common._parse_file(txt_path)
+        pipeline_common._parse_file(txt_path, 'csv_ans_docs')
 
 
 def test_run_pipeline_processes_supported_files_and_skips_others(monkeypatch, tmp_path):
@@ -55,16 +63,29 @@ def test_run_pipeline_processes_supported_files_and_skips_others(monkeypatch, tm
         def save_chunk(self, chunk):
             saved_chunks.append(chunk)
 
+    class DummyVision:
+        def build_document_image_chunks(self, image_assets, *, doc_id, source_type):
+            return [
+                {
+                    'chunk_id': f'{doc_id}_img_0',
+                    'text': 'image evidence text',
+                    'page_number': 1,
+                    'image_paths': [f'/tmp/{doc_id}.png'],
+                }
+            ]
+
     monkeypatch.setattr(pipeline_common, "QdrantRepo", DummyQdrant)
     monkeypatch.setattr(pipeline_common, "PostgresRepo", DummyPostgres)
+    monkeypatch.setattr(pipeline_common, "VisionService", lambda: DummyVision())
     monkeypatch.setattr(pipeline_common, "file_sha256", lambda _: "hash")
     monkeypatch.setattr(
         pipeline_common,
         "_parse_file",
-        lambda path: {
+        lambda path, source_type: {
             "text": f"{path.stem} body",
             "pages": 1,
             "images": [f"{path.stem}.png"],
+            "image_assets": [{'path': f"{path.stem}.png", 'page_number': 1}],
         },
     )
     monkeypatch.setattr(
@@ -77,9 +98,9 @@ def test_run_pipeline_processes_supported_files_and_skips_others(monkeypatch, tm
     result = pipeline_common.run_pipeline(str(tmp_path), "csv_ans_docs")
 
     assert result["processed_files"] == 2
-    assert result["created_points"] == 4
+    assert result["created_points"] == 6
     assert len(saved_documents) == 2
-    assert len(saved_chunks) == 4
+    assert len(saved_chunks) == 6
     assert len(upserts) == 2
     assert {doc["file_name"] for doc in saved_documents} == {"a.docx", "b.pdf"}
     assert all(chunk["source_type"] == "csv_ans_docs" for chunk in saved_chunks)

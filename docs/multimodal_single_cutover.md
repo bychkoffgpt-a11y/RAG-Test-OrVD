@@ -1,0 +1,147 @@
+# Single-cutover: запуск мультимодального контура (текст + скриншоты + изображения в документах)
+
+Документ описывает **полный** список действий, которые нужно выполнить, чтобы новый мультимодальный контур заработал сразу целиком, без промежуточных режимов.
+
+## 1) Что должно заработать после внедрения
+- `/ask` и `/v1/chat/completions` принимают текст + скриншоты пользователя.
+- Скриншоты анализируются через OCR и возвращаются как `visual_evidence`.
+- DOCX/PDF ingestion извлекает изображения из документов, делает OCR/caption текст и индексирует это в Qdrant как image-derived чанки.
+- Логирование этапов vision-пайплайна идёт в существующий стек JSON logs + Promtail + Loki + Grafana.
+
+## 2) Требования к окружению
+- GPU: NVIDIA (в вашем случае RTX 5070 12GB)
+- Docker + Docker Compose v2
+- WSL2 + Ubuntu
+- Для WSL2/CUDA: установлен Windows NVIDIA Driver + CUDA support для WSL2
+
+## 3) Какие модели нужно скачать
+
+### 3.1 Vision-модель
+- Модель: `Qwen/Qwen3-VL-2B-Instruct`
+- Локальный путь: `models/vision/qwen3-vl-2b-instruct/`
+
+### 3.2 OCR-модели
+- Движок: PaddleOCR
+- Локальные пути:
+  - `models/ocr/det/`
+  - `models/ocr/rec/`
+  - `models/ocr/cls/`
+
+### 3.3 RAG-модели (уже используемые в проекте)
+- Embeddings: `models/embeddings/bge-m3/`
+- Reranker: `models/reranker/bge-reranker-v2-m3/`
+- LLM (llama.cpp): локальный GGUF-файл по текущим настройкам проекта
+
+## 4) Как скачать модели (онлайн-машина)
+
+> Ниже примерный сценарий. В закрытом контуре можно скопировать каталоги с артефактами напрямую.
+
+```bash
+# Vision
+huggingface-cli download Qwen/Qwen3-VL-2B-Instruct \
+  --local-dir ./models/vision/qwen3-vl-2b-instruct
+
+# Embeddings
+huggingface-cli download BAAI/bge-m3 \
+  --local-dir ./models/embeddings/bge-m3
+
+# Reranker
+huggingface-cli download BAAI/bge-reranker-v2-m3 \
+  --local-dir ./models/reranker/bge-reranker-v2-m3
+```
+
+Для PaddleOCR скачайте offline-модели det/rec/cls и разложите в `models/ocr/{det,rec,cls}`.
+
+## 5) Куда положить файлы в проекте
+
+Итоговая структура (минимум):
+
+```text
+models/
+  vision/
+    qwen3-vl-2b-instruct/
+  ocr/
+    det/
+    rec/
+    cls/
+  embeddings/
+    bge-m3/
+  reranker/
+    bge-reranker-v2-m3/
+```
+
+## 6) Какие переменные окружения задать
+
+Добавьте в `.env`:
+
+```bash
+# Existing RAG settings
+EMBEDDING_MODEL_PATH=/models/embeddings/bge-m3
+RERANKER_MODEL_PATH=/models/reranker/bge-reranker-v2-m3
+EMBEDDING_DEVICE=cuda
+RERANKER_DEVICE=cuda
+
+# New multimodal settings
+VISION_ENABLED=true
+VISION_MODEL_PATH=/models/vision/qwen3-vl-2b-instruct
+VISION_OCR_MODEL_ROOT=/models/ocr
+VISION_OCR_LANG=ru
+VISION_OCR_USE_ANGLE_CLS=true
+VISION_OCR_SHOW_LOG=false
+```
+
+## 7) Что проверить перед запуском
+1. Все model-директории существуют и смонтированы в контейнеры.
+2. Внутри контейнера доступны пути `/models/...`.
+3. В контейнере есть доступ к GPU (`nvidia-smi` внутри GPU-сервисов).
+4. В `data/inbox/...` лежат документы для индексации.
+
+## 8) Запуск single-cutover
+
+```bash
+./scripts/preflight_check.sh --mode offline
+docker compose up -d --build
+```
+
+После старта:
+
+```bash
+# Индексация документов (с image extraction + OCR)
+docker compose run --rm ingest-a
+docker compose run --rm ingest-b
+```
+
+## 9) Smoke checks
+
+### 9.1 Проверка API
+```bash
+curl -s http://localhost:8000/health
+```
+
+### 9.2 Проверка OpenAI-compatible multimodal
+Отправьте `messages` с `type=text` + `type=image_url` (`file:///...`) и убедитесь, что в ответе есть:
+- `choices[].message.content`
+- `sources`
+- `images`
+- `visual_evidence`
+
+### 9.3 Проверка логов vision
+```bash
+docker compose logs -f support-api | rg vision_
+```
+
+Ожидаемые события: `vision_request_received`, `vision_image_processed`, `vision_request_finished`, и ошибки OCR при проблемах.
+
+## 10) Типовые проблемы
+- `vision_ocr_init_failed`: не найдены OCR-модели в `VISION_OCR_MODEL_ROOT`.
+- Пустой `visual_evidence`: невалидный путь к изображению или OCR не смог извлечь текст.
+- Нет image-derived чанков: ingestion не нашёл изображений в документе или OCR fallback вернул пустой текст.
+
+## 11) Логирование и мониторинг
+Новая подсистема использует существующий контур:
+- JSON-логи в stdout и файл `support-api.log`
+- сбор Promtail
+- хранение Loki
+- визуализация в Grafana
+
+Дополнительной отдельной logging-инфраструктуры не требуется.

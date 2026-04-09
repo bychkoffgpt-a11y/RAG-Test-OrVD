@@ -18,6 +18,14 @@ def test_build_prompt_includes_question_and_contexts():
                 "page_number": None,
             },
         ],
+        visual_evidence=[
+            {
+                'summary': 'На скриншоте есть код 500',
+                'ocr_text': 'HTTP 500 Internal Server Error',
+                'confidence': 0.81,
+                'image_path': '/tmp/scr.png',
+            }
+        ],
     )
 
     assert "Как восстановить доступ?" in prompt
@@ -25,3 +33,5 @@ def test_build_prompt_includes_question_and_contexts():
     assert "источник: csv_ans_docs/DOC-1, стр. 2" in prompt
     assert "[2] Шаг 2: подтвердить личность." in prompt
     assert "источник: internal_regulations/REG-7, стр. None" in prompt
+    assert 'Сигналы со скриншотов' in prompt
+    assert 'HTTP 500 Internal Server Error' in prompt
