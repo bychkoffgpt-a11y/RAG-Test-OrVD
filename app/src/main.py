@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from src.api.ask import router as ask_router
 from src.api.ingest_a import router as ingest_a_router
 from src.api.ingest_b import router as ingest_b_router
+from src.api.sources import router as sources_router
 from src.api.schemas import AskRequest
 from src.core.logging import configure_logging
 from src.core.request_context import reset_request_id, set_request_id
@@ -24,6 +25,7 @@ app = FastAPI(title='ЦСВ АНС Support API', version='0.1.0')
 app.include_router(ask_router)
 app.include_router(ingest_a_router)
 app.include_router(ingest_b_router)
+app.include_router(sources_router)
 
 orch = RagOrchestrator()
 

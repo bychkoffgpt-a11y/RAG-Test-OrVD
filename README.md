@@ -27,6 +27,10 @@
 - Prometheus + Grafana (метрики)
 - Loki + Promtail (централизованные логи)
 
+## Ссылки на документы-основания
+- В ответе API (`/ask` и `/v1/chat/completions`) каждый элемент `sources` содержит поле `download_url`.
+- По ссылке вида `/sources/{source_type}/{doc_id}/download` можно скачать исходный документ, на который ссылается ответ.
+
 ## Предварительные требования
 Перед запуском убедитесь, что в текущем shell доступны Docker и Docker Compose v2:
 

@@ -18,3 +18,4 @@ def test_source_item_default_image_paths_is_empty_list():
     )
 
     assert item.image_paths == []
+    assert item.download_url is None
