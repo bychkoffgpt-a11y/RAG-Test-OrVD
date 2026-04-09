@@ -132,6 +132,25 @@ docker compose logs -f support-api | rg vision_
 
 Ожидаемые события: `vision_request_received`, `vision_image_processed`, `vision_request_finished`, и ошибки OCR при проблемах.
 
+### 9.4 Автоматизированный регрессионный прогон (5 тест-кейсов)
+Скрипт `scripts/run_vision_regression.py` автоматически:
+- подготавливает контрольные картинки в `data/vision_regression/`;
+- создаёт PDF с embedded-изображением в `data/inbox/csv_ans_docs/vision_regression_marker.pdf`;
+- запускает 5 проверок (positive/negative) для `vision + OCR + retrieval`;
+- возвращает код `0` при успехе и `1` при любом фейле.
+
+Запуск:
+```bash
+python3 scripts/run_vision_regression.py --api-url http://localhost:8000
+```
+
+Опции:
+```bash
+python3 scripts/run_vision_regression.py --help
+python3 scripts/run_vision_regression.py --marker-token ERR-9A7K-UNIQUE
+python3 scripts/run_vision_regression.py --prefer-docker-for-assets
+```
+
 ## 10) Типовые проблемы
 - `vision_ocr_init_failed`: не найдены OCR-модели в `VISION_OCR_MODEL_ROOT`.
 - Пустой `visual_evidence`: невалидный путь к изображению или OCR не смог извлечь текст.
