@@ -47,22 +47,30 @@ docker compose up -d
 3. Выполняет `git fetch --all --prune`.
 4. Выполняет `git pull --ff-only` (без merge-коммитов).
 5. Запускает `./scripts/preflight_check.sh --mode <offline|online>`.
-6. Поднимает приложение `docker compose up -d --build`.
+6. Автоматически определяет, нужно ли пересобирать `support-api`:
+   - если изменились входы образа (например `app/src`, `app/pyproject.toml`, `app/Dockerfile`, `app/wheels`, `docker-compose.yml`) — запускает `docker compose up -d --build`;
+   - если входы не менялись — запускает `docker compose up -d` без пересборки.
 
 Режимы работы:
-- `--mode offline` (по умолчанию): `preflight_check.sh` проверяет, что `app/wheels` содержит хотя бы один `*.whl`.
-- `--mode online`: пустой `app/wheels` допускается, зависимости будут устанавливаться из PyPI во время сборки.
+- `--mode offline` (по умолчанию): `preflight_check.sh` проверяет, что `app/wheels` содержит полный набор wheel для прямых и транзитивных зависимостей.
+- `--mode online`: пустой `app/wheels` допускается; если wheelhouse заполнен — он используется в приоритете, затем fallback на PyPI.
 
 Примеры:
 ```bash
 ./scripts/update_app.sh --mode offline
 ./scripts/update_app.sh --mode online
+./scripts/update_app.sh --mode online --build   # принудительная пересборка
 ```
 
 Если нужен «чистый» старт без существующих данных, отдельно используйте `docker compose down -v`.
 
 ## Офлайн-сборка Python-зависимостей
 Для закрытого контура без доступа к PyPI используйте локальный wheelhouse (`app/wheels`) и инструкции в [`docs/operations.md`](docs/operations.md#устойчивость-сборки-python-зависимостей-и-офлайн-режим).
+
+Для безопасного наполнения и обновления wheelhouse используйте:
+```bash
+./scripts/update_wheels.sh --mode refresh
+```
 
 Для онлайн-сборки можно переопределить индекс Python-пакетов через build args:
 ```bash
