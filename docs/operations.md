@@ -51,6 +51,51 @@ pytest -q --cov=src --cov-report=term-missing
 - Статус: `docker compose ps`
 - Логи API: `docker compose logs -f support-api`
 
+## Логи сервисов и преднастроенные Grafana-запросы (error/warning)
+
+### Какие логи пишут сервисы в этом репозитории
+- `support-api` пишет JSON-логи c полями `timestamp`, `level`, `logger`, `message`, опционально `request_id`, `exc_info`.
+- Уровни логирования, которые реально встречаются в коде приложения:
+  - `INFO` — штатные события обработки запросов, retrieval/rerank, загрузка моделей.
+  - `WARNING` — деградация/переключение на fallback (например, fallback на CPU).
+  - `ERROR` — как отдельный уровень в приложении почти не используется, но ошибки фиксируются через `logger.exception(...)` с traceback (обычно текст содержит `exception`/`traceback`).
+- Остальные контейнеры (`qdrant`, `llm-server`, `postgres`, `grafana`, `loki`, `promtail`, `openwebui`, `ingest-*`) пишут стандартные container logs, которые также попадают в Loki через Promtail.
+
+### Что уже преднастроено для всех пользователей Grafana
+- Dashboard `RAG Support Overview` provisioning-ится из `infra/grafana/dashboards/overview.json`, поэтому доступен всем пользователям инстанса Grafana после запуска/перезапуска стека.
+- Добавлены 2 готовых сценария:
+  1. **С группировкой**: `Errors+Warnings by service (1m)` — таймсерия по количеству событий в разрезе `service`.
+  2. **Без группировки**: `Errors+Warnings (all services, no grouping)` — поток логов по всем (или выбранным) сервисам.
+- Добавлена переменная `$service` (multi-select + `All`) для фильтрации по сервисам.
+- Включён режим `liveNow` для dashboard.
+
+### Используемые LogQL-запросы
+- C группировкой по сервису:
+  ```logql
+  sum by (service) (
+    count_over_time(
+      {service=~"$service"}
+      |~ "(?i)(\\berror\\b|\\bwarn(?:ing)?\\b|\\bexception\\b|\\btraceback\\b|\"level\"\\s*:\\s*\"(?:ERROR|WARNING|WARN)\")"
+      [1m]
+    )
+  )
+  ```
+- Без группировки (сырые логи):
+  ```logql
+  {service=~"$service"}
+  |~ "(?i)(\\berror\\b|\\bwarn(?:ing)?\\b|\\bexception\\b|\\btraceback\\b|\"level\"\\s*:\\s*\"(?:ERROR|WARNING|WARN)\")"
+  ```
+
+### Реальное время в терминале (Live tail через Loki)
+Если нужен поток в терминал (а не только в UI Grafana), используйте `logcli`:
+```bash
+docker run --rm --network csv-ans-support-bot_rag_net grafana/logcli:3.1.1 \
+  --addr=http://loki:3100 \
+  query '{service=~".+"} |~ "(?i)(\\berror\\b|\\bwarn(?:ing)?\\b|\\bexception\\b|\\btraceback\\b|\\"level\\"\\s*:\\s*\\"(?:ERROR|WARNING|WARN)\\")"' \
+  --tail
+```
+> Примечание: имя сети (`csv-ans-support-bot_rag_net`) соответствует `name:` в `docker-compose.yml`.
+
 ## Преднастроенные alert-шаблоны Grafana (warning/error)
 - Alert-правила загружаются через provisioning из `infra/grafana/provisioning/alerting/log-severity-rules.yaml`.
 - Это глобальные правила инстанса Grafana (доступны всем пользователям без ручной настройки после новой сессии).
