@@ -13,7 +13,7 @@
 ```
 
 Скрипт поддерживает 2 режима:
-- `--mode offline` (по умолчанию): в `app/wheels` должен быть хотя бы один `*.whl`.
+- `--mode offline` (по умолчанию): в `app/wheels` должен быть полный набор wheel для всех прямых и транзитивных зависимостей.
 - `--mode online`: пустой wheelhouse допустим, зависимости можно поставить из PyPI.
 
 Примеры:
@@ -64,7 +64,9 @@ pytest -q --cov=src --cov-report=term-missing
 4. Выполняет `git fetch --all --prune`.
 5. Выполняет `git pull --ff-only`.
 6. Запускает `./scripts/preflight_check.sh --mode <offline|online>`.
-7. Поднимает приложение (`docker compose up -d --build`).
+7. Автоматически определяет, нужен ли rebuild `support-api`:
+   - если изменились входы образа (`app/Dockerfile`, `app/pyproject.toml`, `app/src/**`, `app/wheels/**`, `docker-compose.yml`, `.env.example`) или образ отсутствует локально — запускает `docker compose up -d --build`;
+   - иначе — запускает `docker compose up -d` без пересборки.
 
 Если нужен «чистый» старт с удалением данных, перед этим выполните отдельно:
 ```bash
@@ -90,7 +92,7 @@ docker compose up -d --build
 ### Вариант 1 — онлайн-сборка (по умолчанию)
 - При `docker compose build`/`up --build` используется `pip install` с повышенными retry/timeout.
 - Этот режим требует доступ к PyPI.
-- В режиме online принудительно используется `PIP_MODE=online`, поэтому даже при наличии `app/wheels/*.whl` зависимости ставятся из индекса (это защищает от падения на неполном wheelhouse).
+- В режиме online используется `PIP_MODE=online`: при наличии `app/wheels/*.whl` сначала пробуется локальный wheelhouse, а при ошибке автоматически включается fallback на PyPI.
 - Перед установкой выполняется TLS precheck к `pypi.org:443`; при проблемах выводится явная диагностика по сети/сертификатам.
 - Можно использовать кастомный индекс/зеркало через build args:
   ```bash
@@ -103,6 +105,31 @@ docker compose up -d --build
 
 ### Вариант 2 — полностью офлайн (рекомендуется для закрытого контура)
 1. На машине с интернетом подготовить wheelhouse:
+   ```bash
+   ./scripts/update_wheels.sh --mode refresh
+   ```
+   Либо (если нужно добавить dev-зависимости):
+   ```bash
+   ./scripts/update_wheels.sh --mode refresh --include-dev
+   ```
+2. (Опционально) инкрементально докачать missing wheels:
+   ```bash
+   ./scripts/update_wheels.sh --mode append
+   ```
+3. Скопировать каталог `app/wheels` в офлайн-контур (если сборка выполняется на другом хосте).
+4. Запустить пересборку:
+   ```bash
+   docker compose build --no-cache ingest-a support-api
+   ```
+5. Убедиться, что зависимости ставятся из `/wheels` (в логах pip будет `--no-index --find-links=/wheels`).
+   При ручном запуске можно явно зафиксировать офлайн-режим:
+   ```bash
+   PIP_MODE=offline docker compose build --no-cache support-api
+   ```
+
+Ранее используемая ручная команда `pip download ...` по списку пакетов всё ещё допустима, но рекомендуется именно `scripts/update_wheels.sh`: скрипт формирует список из `pyproject.toml`, валидирует транзитивные зависимости и атомарно заменяет wheelhouse.
+
+Пример старого ручного варианта:
    ```bash
    cd app
    mkdir -p wheels
@@ -121,16 +148,6 @@ docker compose up -d --build
      psycopg[binary]==3.2.3 \
      setuptools>=68 \
      wheel
-   ```
-2. Скопировать каталог `app/wheels` в офлайн-контур (если сборка выполняется на другом хосте).
-3. Запустить пересборку:
-   ```bash
-   docker compose build --no-cache ingest-a support-api
-   ```
-4. Убедиться, что зависимости ставятся из `/wheels` (в логах pip будет `--no-index --find-links=/wheels`).
-   При ручном запуске можно явно зафиксировать офлайн-режим:
-   ```bash
-   PIP_MODE=offline docker compose build --no-cache support-api
    ```
 
 ## Где размещать документы

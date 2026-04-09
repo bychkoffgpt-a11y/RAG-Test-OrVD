@@ -13,7 +13,7 @@ Usage: ./scripts/preflight_check.sh [--mode offline|online] [--skip-docker]
 
 Options:
   --mode MODE     Режим проверки:
-                    offline (по умолчанию) — обязательно требовать *.whl в app/wheels
+                    offline (по умолчанию) — требовать полный wheelhouse (прямые и транзитивные зависимости)
                     online                — разрешить пустой app/wheels
   --offline       Эквивалент: --mode offline
   --online        Эквивалент: --mode online
@@ -108,49 +108,43 @@ require_nonempty_wheelhouse() {
 
   local pyproject_file="$ROOT_DIR/app/pyproject.toml"
   [[ -f "$pyproject_file" ]] || fail "Файл не найден: $pyproject_file"
-  local missing_deps
-  if ! missing_deps="$(python3 - "$pyproject_file" "$dir" <<'PY'
+
+  local tmp_req
+  tmp_req="$(mktemp)"
+  local tmp_download_dir
+  tmp_download_dir="$(mktemp -d)"
+  trap 'rm -f "$tmp_req"; rm -rf "$tmp_download_dir"' RETURN
+
+  if ! python3 - "$pyproject_file" "$tmp_req" <<'PY'
 import pathlib
-import re
 import sys
 import tomllib
 
-
-def normalize(name: str) -> str:
-    return re.sub(r"[-_.]+", "-", name).lower()
-
-
 pyproject_path = pathlib.Path(sys.argv[1])
-wheel_dir = pathlib.Path(sys.argv[2])
+out_path = pathlib.Path(sys.argv[2])
 with pyproject_path.open("rb") as fh:
     data = tomllib.load(fh)
 
-deps = data.get("project", {}).get("dependencies", [])
-required = []
-for dep in deps:
-    pkg = re.split(r"[<>=!~;\\[]", dep, maxsplit=1)[0].strip()
-    if pkg:
-        required.append(normalize(pkg))
-
-present = set()
-for wheel_file in wheel_dir.glob("*.whl"):
-    base = wheel_file.name.split("-", 1)[0]
-    if base:
-        present.add(normalize(base))
-
-missing = sorted(pkg for pkg in required if pkg not in present)
-print(",".join(missing))
+deps = list(data.get("project", {}).get("dependencies", []))
+build_reqs = list(data.get("build-system", {}).get("requires", []))
+all_reqs = deps + build_reqs
+out_path.write_text("\n".join(all_reqs) + "\n", encoding="utf-8")
 PY
-)"; then
-    fail "Не удалось проверить полноту wheelhouse в $dir"
+  then
+    fail "Не удалось извлечь список зависимостей из $pyproject_file"
   fi
 
-  if [[ -n "$missing_deps" ]]; then
-    fail "Wheelhouse неполный: отсутствуют wheel для пакетов: ${missing_deps}. Подготовьте полный набор зависимостей перед офлайн-сборкой."
+  if ! python3 -m pip download \
+    --disable-pip-version-check \
+    --dest "$tmp_download_dir" \
+    --no-index \
+    --find-links "$dir" \
+    -r "$tmp_req" >/dev/null; then
+    fail "Wheelhouse неполный или несовместимый: pip не смог разрешить все прямые/транзитивные зависимости из $dir. Обновите app/wheels (см. scripts/update_wheels.sh)."
   fi
 
   ok "Найдены wheel-пакеты для офлайн-сборки: $dir"
-  ok "Полнота wheelhouse подтверждена по зависимостям app/pyproject.toml"
+  ok "Полнота wheelhouse подтверждена (прямые и транзитивные зависимости разрешаются локально)"
 }
 
 check_wheelhouse_by_mode() {
@@ -163,7 +157,7 @@ check_wheelhouse_by_mode() {
     online)
       require_dir "$dir"
       if find "$dir" -mindepth 1 -maxdepth 1 -type f -name '*.whl' -print -quit | grep -q .; then
-        ok "Найдены wheel-пакеты: $dir (в режиме online будет принудительная установка из PyPI)"
+        ok "Найдены wheel-пакеты: $dir (в режиме online они будут использованы в приоритете, с fallback на PyPI)"
       else
         warn "wheelhouse пустой: $dir. В режиме online это допустимо, зависимости будут ставиться из PyPI."
       fi
