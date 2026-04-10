@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     vision_model_path: str = '/models/vision/qwen3-vl-2b-instruct'
     vision_ocr_model_root: str = '/models/ocr'
     vision_ocr_lang: str = 'ru'
+    vision_ocr_device: str = 'auto'
     vision_ocr_use_angle_cls: bool = True
     vision_ocr_show_log: bool = False
     chunk_size_csv_ans_docs: int = 1100
