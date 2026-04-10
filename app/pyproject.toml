@@ -23,6 +23,7 @@ dependencies = [
   "torch==2.5.1",
   "transformers==4.46.3",
   "paddleocr==2.8.1",
+  "paddlepaddle==2.6.2",
   "pillow==10.4.0"
 ]
 

@@ -14,6 +14,29 @@ logger = logging.getLogger(__name__)
 class VisionService:
     _ocr_client = None
 
+    @staticmethod
+    def _resolve_ocr_use_gpu() -> bool:
+        preferred = settings.vision_ocr_device.strip().lower()
+        if preferred not in {'auto', 'cpu', 'cuda'}:
+            raise ValueError(f'Unsupported vision OCR device: {settings.vision_ocr_device}')
+
+        if preferred == 'cpu':
+            return False
+
+        try:
+            import paddle
+        except Exception:
+            if preferred == 'cuda':
+                raise RuntimeError('CUDA device requested for OCR, but paddle is unavailable')
+            return False
+
+        has_cuda = bool(getattr(paddle, 'is_compiled_with_cuda', lambda: False)())
+        if preferred == 'cuda':
+            if not has_cuda:
+                raise RuntimeError('CUDA device requested for OCR, but paddle CUDA runtime is unavailable')
+            return True
+        return has_cuda
+
     def analyze_attachments(self, attachments: Iterable[AttachmentItem], question: str) -> list[VisionEvidenceItem]:
         if not settings.vision_enabled:
             logger.info('vision_disabled')
@@ -95,17 +118,21 @@ class VisionService:
             from paddleocr import PaddleOCR
 
             model_root = settings.vision_ocr_model_root
+            use_gpu = cls._resolve_ocr_use_gpu()
             ocr = PaddleOCR(
                 use_angle_cls=settings.vision_ocr_use_angle_cls,
                 lang=settings.vision_ocr_lang,
                 show_log=settings.vision_ocr_show_log,
-                use_gpu=True,
+                use_gpu=use_gpu,
                 det_model_dir=os.path.join(model_root, 'det'),
                 rec_model_dir=os.path.join(model_root, 'rec'),
                 cls_model_dir=os.path.join(model_root, 'cls'),
             )
             cls._ocr_client = ocr
-            logger.info('vision_ocr_initialized', extra={'model_root': model_root, 'lang': settings.vision_ocr_lang})
+            logger.info(
+                'vision_ocr_initialized',
+                extra={'model_root': model_root, 'lang': settings.vision_ocr_lang, 'use_gpu': use_gpu},
+            )
             return cls._ocr_client
         except Exception:
             logger.exception('vision_ocr_init_failed')

@@ -86,6 +86,7 @@ VISION_ENABLED=true
 VISION_MODEL_PATH=/models/vision/qwen3-vl-2b-instruct
 VISION_OCR_MODEL_ROOT=/models/ocr
 VISION_OCR_LANG=ru
+VISION_OCR_DEVICE=auto
 VISION_OCR_USE_ANGLE_CLS=true
 VISION_OCR_SHOW_LOG=false
 ```
@@ -132,7 +133,36 @@ docker compose logs -f support-api | rg vision_
 
 Ожидаемые события: `vision_request_received`, `vision_image_processed`, `vision_request_finished`, и ошибки OCR при проблемах.
 
-### 9.4 Автоматизированный регрессионный прогон (5 тест-кейсов)
+### 9.4 Проверка того, что изображения извлеклись, OCR отработал и результаты сохранились
+
+1) Валидация извлечённых изображений на диске:
+```bash
+find ./data/parsed_images/csv_ans_docs -type f | wc -l
+find ./data/parsed_images/internal_regulations -type f | wc -l
+```
+Ожидаемо: значения больше `0` для наборов документов с embedded-картинками.
+
+2) Валидация сохранённых image-derived чанков в Postgres:
+```bash
+docker compose exec -T postgres psql -U "${POSTGRES_USER:-support_user}" -d "${POSTGRES_DB:-support}" -c \
+"SELECT source_type, COUNT(*) AS image_chunks FROM chunks WHERE chunk_id LIKE '%_img_%' GROUP BY source_type ORDER BY source_type;"
+```
+Ожидаемо: `image_chunks > 0`.
+
+3) Быстрый просмотр примеров OCR-сохранений:
+```bash
+docker compose exec -T postgres psql -U "${POSTGRES_USER:-support_user}" -d "${POSTGRES_DB:-support}" -c \
+"SELECT source_type, chunk_id, left(text_preview, 200) AS preview FROM chunks WHERE chunk_id LIKE '%_img_%' ORDER BY id DESC LIMIT 10;"
+```
+Ожидаемо: в `preview` присутствуют префиксы вида `[IMAGE] ... OCR:`.
+
+4) Проверка, что OCR инициализировался с корректным режимом CPU/GPU:
+```bash
+docker compose logs support-api | rg "vision_ocr_initialized|vision_ocr_init_failed"
+```
+Ожидаемо: событие `vision_ocr_initialized` с полем `use_gpu=true|false`.
+
+### 9.5 Автоматизированный регрессионный прогон (5 тест-кейсов)
 Скрипт `scripts/run_vision_regression.py` автоматически:
 - подготавливает контрольные картинки в `data/vision_regression/`;
 - создаёт PDF с embedded-изображением в `data/inbox/csv_ans_docs/vision_regression_marker.pdf`;
@@ -153,6 +183,7 @@ python3 scripts/run_vision_regression.py --prefer-docker-for-assets
 
 ## 10) Типовые проблемы
 - `vision_ocr_init_failed`: не найдены OCR-модели в `VISION_OCR_MODEL_ROOT`.
+- `vision_ocr_init_failed` + `No module named 'paddle'`: отсутствует runtime-зависимость `paddlepaddle` в контейнерном окружении.
 - Пустой `visual_evidence`: невалидный путь к изображению или OCR не смог извлечь текст.
 - Нет image-derived чанков: ingestion не нашёл изображений в документе или OCR fallback вернул пустой текст.
 
