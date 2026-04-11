@@ -111,6 +111,21 @@ def run_pipeline(
             chunk_strategy=chunk_strategy,
         )
         image_points = _build_image_points(vision, parsed, doc_id=doc_id, source_type=source_type)
+        image_assets_count = len(parsed.get('image_assets') or [])
+        logger.info(
+            'ingest_image_assets_processed',
+            extra={
+                'doc_id': doc_id,
+                'source_type': source_type,
+                'image_assets_count': image_assets_count,
+                'image_points_count': len(image_points),
+            },
+        )
+        if image_assets_count > 0 and not image_points:
+            logger.warning(
+                'ingest_image_chunks_empty_after_extraction',
+                extra={'doc_id': doc_id, 'source_type': source_type, 'image_assets_count': image_assets_count},
+            )
         points = []
 
         for idx, (ch, page_number) in enumerate(text_chunks_with_pages):

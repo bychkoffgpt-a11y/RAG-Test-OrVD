@@ -60,7 +60,11 @@ class VisionService:
         return evidence
 
     def build_document_image_chunks(self, image_assets: Iterable[dict], *, doc_id: str, source_type: str) -> list[dict]:
-        if not settings.vision_enabled:
+        if not settings.vision_ingest_enabled:
+            logger.warning(
+                'vision_ingest_disabled',
+                extra={'doc_id': doc_id, 'source_type': source_type},
+            )
             return []
 
         chunks: list[dict] = []

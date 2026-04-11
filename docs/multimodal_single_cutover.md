@@ -83,6 +83,7 @@ RERANKER_DEVICE=cuda
 
 # New multimodal settings
 VISION_ENABLED=true
+VISION_INGEST_ENABLED=true
 VISION_MODEL_PATH=/models/vision/qwen3-vl-2b-instruct
 VISION_OCR_MODEL_ROOT=/models/ocr
 VISION_OCR_LANG=ru
@@ -127,11 +128,19 @@ curl -s http://localhost:8000/health
 - `visual_evidence`
 
 ### 9.3 Проверка логов vision
+
+Если ingestion запускается через API (`/ingest/a/run`, `/ingest/b/run`), смотрим `support-api`:
 ```bash
 docker compose logs -f support-api | rg vision_
 ```
 
-Ожидаемые события: `vision_request_received`, `vision_image_processed`, `vision_request_finished`, и ошибки OCR при проблемах.
+Если ingestion запускается отдельными контейнерами (`docker compose run --rm ingest-a|ingest-b`), проверяем их:
+```bash
+docker compose logs ingest-a | rg "vision_|ingest_image_"
+docker compose logs ingest-b | rg "vision_|ingest_image_"
+```
+
+Ожидаемые события: `vision_request_received`, `vision_image_processed`, `vision_request_finished`, `ingest_image_assets_processed` и ошибки OCR при проблемах.
 
 ### 9.4 Проверка того, что изображения извлеклись, OCR отработал и результаты сохранились
 
@@ -162,6 +171,12 @@ docker compose logs support-api | rg "vision_ocr_initialized|vision_ocr_init_fai
 ```
 Ожидаемо: событие `vision_ocr_initialized` с полем `use_gpu=true|false`.
 
+Если ingestion запускается `ingest-a/ingest-b`, используйте:
+```bash
+docker compose logs ingest-a | rg "vision_ocr_initialized|vision_ocr_init_failed"
+docker compose logs ingest-b | rg "vision_ocr_initialized|vision_ocr_init_failed"
+```
+
 ### 9.5 Автоматизированный регрессионный прогон (5 тест-кейсов)
 Скрипт `scripts/run_vision_regression.py` автоматически:
 - подготавливает контрольные картинки в `data/vision_regression/`;
@@ -185,7 +200,7 @@ python3 scripts/run_vision_regression.py --prefer-docker-for-assets
 - `vision_ocr_init_failed`: не найдены OCR-модели в `VISION_OCR_MODEL_ROOT`.
 - `vision_ocr_init_failed` + `No module named 'paddle'`: отсутствует runtime-зависимость `paddlepaddle` в контейнерном окружении.
 - Пустой `visual_evidence`: невалидный путь к изображению или OCR не смог извлечь текст.
-- Нет image-derived чанков: ingestion не нашёл изображений в документе или OCR fallback вернул пустой текст.
+- Нет image-derived чанков: проверьте, что `VISION_INGEST_ENABLED=true`, а также логи `ingest_image_assets_processed` и `ingest_image_chunks_empty_after_extraction`.
 
 ## 11) Логирование и мониторинг
 Новая подсистема использует существующий контур:

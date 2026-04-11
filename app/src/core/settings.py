@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     reranker_device: str = 'auto'
 
     vision_enabled: bool = True
+    vision_ingest_enabled: bool = True
     vision_model_path: str = '/models/vision/qwen3-vl-2b-instruct'
     vision_ocr_model_root: str = '/models/ocr'
     vision_ocr_lang: str = 'ru'
