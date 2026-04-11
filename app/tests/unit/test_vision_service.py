@@ -36,6 +36,22 @@ def test_build_document_image_chunks_uses_ocr_and_summary(monkeypatch):
     assert 'Access denied' in chunks[0]['text']
 
 
+def test_build_document_image_chunks_not_blocked_by_runtime_vision_toggle(monkeypatch):
+    service = VisionService()
+    monkeypatch.setattr('src.vision.service.settings.vision_enabled', False, raising=False)
+    monkeypatch.setattr('src.vision.service.settings.vision_ingest_enabled', True, raising=False)
+    monkeypatch.setattr(service, '_run_ocr', lambda path: 'OCR text')
+
+    chunks = service.build_document_image_chunks(
+        [{'path': '/tmp/img-2.png', 'page_number': 1}],
+        doc_id='DOC-2',
+        source_type='csv_ans_docs',
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0]['chunk_id'] == 'DOC-2_img_0'
+
+
 def test_resolve_ocr_use_gpu_auto_prefers_cpu_when_paddle_missing(monkeypatch):
     monkeypatch.setattr('src.vision.service.settings.vision_ocr_device', 'auto', raising=False)
     monkeypatch.delitem(sys.modules, 'paddle', raising=False)
