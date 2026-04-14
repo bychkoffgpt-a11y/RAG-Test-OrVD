@@ -88,6 +88,8 @@ services:
         INCLUDE_INGEST_DEPS: 0
         TORCH_DEVICE: ${SUPPORT_API_TORCH_DEVICE:-cuda}
         PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu124}
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}
+        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}
     container_name: support-api
     restart: unless-stopped
     env_file: [.env]
@@ -205,6 +207,8 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
         PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
         INCLUDE_INGEST_DEPS: 1
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}
+        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}
     profiles: ["manual"]
     env_file: [.env]
     environment:
@@ -239,6 +243,8 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
         PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
         INCLUDE_INGEST_DEPS: 1
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}
+        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}
     profiles: ["manual"]
     env_file: [.env]
     environment:
