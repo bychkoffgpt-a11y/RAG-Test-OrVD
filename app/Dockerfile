@@ -14,8 +14,16 @@ ARG PIP_ONLINE_FALLBACK=1
 ARG INCLUDE_INGEST_DEPS=0
 ARG TORCH_DEVICE=cuda
 ARG PYTORCH_CUDA_INDEX_URL=https://download.pytorch.org/whl/cu124
+ARG DEBIAN_MIRROR=https://mirror.yandex.ru/debian
+ARG DEBIAN_SECURITY_MIRROR=https://mirror.yandex.ru/debian-security
 
 RUN set -euo pipefail; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i "s|http://deb.debian.org/debian|${DEBIAN_MIRROR}|g; s|http://deb.debian.org/debian-security|${DEBIAN_SECURITY_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -f /etc/apt/sources.list ]; then \
+      sed -i "s|http://deb.debian.org/debian|${DEBIAN_MIRROR}|g; s|http://security.debian.org/debian-security|${DEBIAN_SECURITY_MIRROR}|g" /etc/apt/sources.list; \
+    fi; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       ca-certificates \

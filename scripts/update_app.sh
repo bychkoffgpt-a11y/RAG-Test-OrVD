@@ -5,6 +5,8 @@ FORCE_BUILD=0
 ONLINE_STRICT_WHEELS=0
 PIP_INDEX_URL_VALUE="${PIP_INDEX_URL:-https://pypi.org/simple}"
 PIP_FALLBACK_INDEX_URL_VALUE="${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+DEBIAN_MIRROR_VALUE="${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}"
+DEBIAN_SECURITY_MIRROR_VALUE="${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}"
 
 usage() {
   cat <<'USAGE'
@@ -203,17 +205,22 @@ export COMPOSE_DOCKER_CLI_BUILD=1
 if should_rebuild_support_api "$pre_pull_head" "$post_pull_head" "$MODE"; then
   log "Запускаю приложение (docker compose up -d --build, PIP_MODE=$MODE, ONLINE_STRICT_WHEELS=$ONLINE_STRICT_WHEELS)..."
   log "Индексы pip: primary=${PIP_INDEX_URL_VALUE}, mirror=${PIP_FALLBACK_INDEX_URL_VALUE}"
+  log "Зеркала Debian: main=${DEBIAN_MIRROR_VALUE}, security=${DEBIAN_SECURITY_MIRROR_VALUE}"
   if [[ "$MODE" == "online" && "$ONLINE_STRICT_WHEELS" -eq 1 ]]; then
     PIP_MODE="$MODE" \
       PIP_ONLINE_FALLBACK=0 \
       PIP_INDEX_URL="$PIP_INDEX_URL_VALUE" \
       PIP_FALLBACK_INDEX_URL="$PIP_FALLBACK_INDEX_URL_VALUE" \
+      DEBIAN_MIRROR="$DEBIAN_MIRROR_VALUE" \
+      DEBIAN_SECURITY_MIRROR="$DEBIAN_SECURITY_MIRROR_VALUE" \
       docker compose up -d --build
   else
     PIP_MODE="$MODE" \
       PIP_ONLINE_FALLBACK=1 \
       PIP_INDEX_URL="$PIP_INDEX_URL_VALUE" \
       PIP_FALLBACK_INDEX_URL="$PIP_FALLBACK_INDEX_URL_VALUE" \
+      DEBIAN_MIRROR="$DEBIAN_MIRROR_VALUE" \
+      DEBIAN_SECURITY_MIRROR="$DEBIAN_SECURITY_MIRROR_VALUE" \
       docker compose up -d --build
   fi
 else

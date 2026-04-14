@@ -105,6 +105,8 @@ docker compose up -d
 docker compose build \
   --build-arg PIP_INDEX_URL=https://pypi.org/simple \
   --build-arg PIP_FALLBACK_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+  --build-arg DEBIAN_MIRROR=https://mirror.yandex.ru/debian \
+  --build-arg DEBIAN_SECURITY_MIRROR=https://mirror.yandex.ru/debian-security \
   --build-arg PIP_EXTRA_INDEX_URL= \
   --build-arg PIP_TRUSTED_HOST=
 ```
