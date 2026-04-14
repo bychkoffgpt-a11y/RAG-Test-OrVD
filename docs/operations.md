@@ -171,13 +171,15 @@ docker compose up -d --build
 - При `docker compose build`/`up --build` используется `pip install` с повышенными retry/timeout.
 - Этот режим требует доступ к PyPI.
 - В режиме online используется `PIP_MODE=online`: при наличии `app/wheels/*.whl` сначала пробуется локальный wheelhouse.
-- Если задан `PIP_ONLINE_FALLBACK=0` (или `./scripts/update_app.sh --online-strict-wheels`), fallback на PyPI отключается и сборка падает при неполном wheelhouse.
+- Если задан `PIP_ONLINE_FALLBACK=0` (или `./scripts/update_app.sh --online-strict-wheels`), fallback на online-индексы отключается и сборка падает при неполном wheelhouse.
+- Если fallback разрешён, после primary индекса (`PIP_INDEX_URL`) выполняется попытка через mirror индекс (`PIP_FALLBACK_INDEX_URL`).
 - Перед установкой выполняется TLS precheck к `pypi.org:443`; при проблемах выводится явная диагностика по сети/сертификатам.
 - Можно использовать кастомный индекс/зеркало через build args:
   ```bash
   docker compose build support-api \
     --build-arg PIP_MODE=online \
     --build-arg PIP_INDEX_URL=https://pypi.org/simple \
+    --build-arg PIP_FALLBACK_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
     --build-arg PIP_EXTRA_INDEX_URL= \
     --build-arg PIP_TRUSTED_HOST=
   ```

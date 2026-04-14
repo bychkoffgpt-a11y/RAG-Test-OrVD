@@ -6,6 +6,7 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DEFAULT_TIMEOUT=120
 
 ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_FALLBACK_INDEX_URL=https://pypi.org/simple
 ARG PIP_EXTRA_INDEX_URL=
 ARG PIP_TRUSTED_HOST=
 ARG PIP_MODE=auto
@@ -51,17 +52,30 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     install_from_wheels() { \
       python3 -m pip install --no-index --find-links=/wheels --no-build-isolation -r /tmp/requirements.txt; \
     }; \
-    install_from_index() { \
-      python -c "import socket, ssl; ctx = ssl.create_default_context(); sock = socket.create_connection(('pypi.org', 443), timeout=10); wrapped = ctx.wrap_socket(sock, server_hostname='pypi.org'); wrapped.close(); print('[INFO] TLS precheck to pypi.org:443 passed')"; \
-      pip_args="--retries 10 --index-url=${PIP_INDEX_URL} --no-build-isolation -r /tmp/requirements.txt"; \
+    install_from_index_url() { \
+      target_index_url="$1"; \
+      label="$2"; \
+      pip_args="--retries 10 --index-url=${target_index_url} --no-build-isolation -r /tmp/requirements.txt"; \
       if [ -n "${PIP_EXTRA_INDEX_URL}" ]; then \
         pip_args="${pip_args} --extra-index-url=${PIP_EXTRA_INDEX_URL}"; \
       fi; \
       if [ -n "${PIP_TRUSTED_HOST}" ]; then \
         pip_args="${pip_args} --trusted-host=${PIP_TRUSTED_HOST}"; \
       fi; \
+      echo "[INFO] pip install from ${label}: ${target_index_url}"; \
       # shellcheck disable=SC2086 \
       python3 -m pip install ${pip_args}; \
+    }; \
+    install_from_indexes() { \
+      install_from_index_url "${PIP_INDEX_URL}" "primary index" || { \
+        if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && [ "${PIP_FALLBACK_INDEX_URL}" != "${PIP_INDEX_URL}" ]; then \
+          echo "[WARN] Установка из primary index не удалась. Переключаюсь на mirror index."; \
+          install_from_index_url "${PIP_FALLBACK_INDEX_URL}" "mirror index"; \
+        else \
+          echo "[WARN] mirror index не задан или совпадает с primary index; повторять попытку в mirror некуда."; \
+          return 1; \
+        fi; \
+      }; \
     }; \
     has_wheels=0; \
     if find /wheels -mindepth 1 -maxdepth 1 -type f -name '*.whl' -print -quit | grep -q .; then \
@@ -86,7 +100,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
             exit 1; \
           else \
             echo "[WARN] Установка из wheelhouse не удалась. Переключаюсь на онлайн-индекс."; \
-            install_from_index || { \
+            install_from_indexes || { \
               echo "[FAIL] pip install не смог загрузить зависимости ни из wheelhouse, ни из индекса."; \
               exit 1; \
             }; \
@@ -94,7 +108,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         }; \
       else \
         echo "[INFO] pip mode: online (wheelhouse empty)"; \
-        install_from_index || { \
+        install_from_indexes || { \
           echo "[FAIL] pip install не смог загрузить зависимости из индекса."; \
           exit 1; \
         }; \
@@ -103,14 +117,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       echo "[INFO] pip mode: auto -> offline wheels"; \
       install_from_wheels || { \
         echo "[WARN] Установка из wheelhouse не удалась. Переключаюсь на онлайн-индекс (PIP_MODE=auto)."; \
-        install_from_index || { \
+        install_from_indexes || { \
           echo "[FAIL] pip install не смог загрузить зависимости ни из wheelhouse, ни из индекса."; \
           exit 1; \
         }; \
       }; \
     else \
       echo "[INFO] pip mode: auto -> online index (wheelhouse is empty)"; \
-      install_from_index || { \
+      install_from_indexes || { \
         echo "[FAIL] pip install не смог загрузить зависимости из индекса."; \
         exit 1; \
       }; \

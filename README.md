@@ -81,7 +81,7 @@ docker compose up -d
 
 Режимы работы:
 - `--mode offline` (по умолчанию): `preflight_check.sh` проверяет, что `app/wheels` содержит полный набор wheel для прямых и транзитивных зависимостей.
-- `--mode online`: пустой `app/wheels` допускается; если wheelhouse заполнен — он используется в приоритете, затем fallback на PyPI.
+- `--mode online`: пустой `app/wheels` допускается; если wheelhouse заполнен — он используется в приоритете, затем fallback на primary индекс (`PIP_INDEX_URL`) и mirror (`PIP_FALLBACK_INDEX_URL`).
 
 Примеры:
 ```bash
@@ -100,10 +100,11 @@ docker compose up -d
 ./scripts/update_wheels.sh --mode refresh
 ```
 
-Для онлайн-сборки можно переопределить индекс Python-пакетов через build args:
+Для онлайн-сборки можно переопределить primary/mirror индекс Python-пакетов через build args:
 ```bash
 docker compose build \
   --build-arg PIP_INDEX_URL=https://pypi.org/simple \
+  --build-arg PIP_FALLBACK_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
   --build-arg PIP_EXTRA_INDEX_URL= \
   --build-arg PIP_TRUSTED_HOST=
 ```

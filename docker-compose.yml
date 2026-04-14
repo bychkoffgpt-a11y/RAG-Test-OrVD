@@ -83,6 +83,8 @@ services:
       args:
         PIP_MODE: ${PIP_MODE:-auto}
         PIP_ONLINE_FALLBACK: ${PIP_ONLINE_FALLBACK:-1}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
         INCLUDE_INGEST_DEPS: 0
         TORCH_DEVICE: ${SUPPORT_API_TORCH_DEVICE:-cuda}
         PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu124}
@@ -200,6 +202,8 @@ services:
       args:
         PIP_MODE: ${PIP_MODE:-auto}
         PIP_ONLINE_FALLBACK: ${PIP_ONLINE_FALLBACK:-1}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
         INCLUDE_INGEST_DEPS: 1
     profiles: ["manual"]
     env_file: [.env]
@@ -232,6 +236,8 @@ services:
       args:
         PIP_MODE: ${PIP_MODE:-auto}
         PIP_ONLINE_FALLBACK: ${PIP_ONLINE_FALLBACK:-1}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
         INCLUDE_INGEST_DEPS: 1
     profiles: ["manual"]
     env_file: [.env]
