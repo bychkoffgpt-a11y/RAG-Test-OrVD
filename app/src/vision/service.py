@@ -118,10 +118,28 @@ class VisionService:
         if cls._ocr_client is not None:
             return cls._ocr_client
 
+        model_root = settings.vision_ocr_model_root
+        missing = cls._missing_ocr_artifacts(model_root)
+        if missing:
+            logger.error(
+                'vision_ocr_models_missing',
+                extra={
+                    'model_root': model_root,
+                    'missing_files': missing,
+                    'hint': 'OCR веса должны быть предзагружены офлайн; runtime-download в read-only /models невозможен',
+                },
+            )
+            return None
+
+        if not os.access(model_root, os.W_OK):
+            logger.info(
+                'vision_ocr_model_root_readonly',
+                extra={'model_root': model_root},
+            )
+
         try:
             from paddleocr import PaddleOCR
 
-            model_root = settings.vision_ocr_model_root
             use_gpu = cls._resolve_ocr_use_gpu()
             ocr = PaddleOCR(
                 use_angle_cls=settings.vision_ocr_use_angle_cls,
@@ -152,6 +170,23 @@ class VisionService:
         except Exception:
             logger.exception('vision_ocr_init_failed')
             return None
+
+    @staticmethod
+    def _missing_ocr_artifacts(model_root: str) -> list[str]:
+        root = Path(model_root)
+        required = {
+            'det': ['inference.pdmodel', 'inference.pdiparams'],
+            'rec': ['inference.pdmodel', 'inference.pdiparams'],
+            'cls': ['inference.pdmodel', 'inference.pdiparams'],
+        }
+        missing: list[str] = []
+        for subdir, files in required.items():
+            base = root / subdir
+            for name in files:
+                path = base / name
+                if not path.exists():
+                    missing.append(str(path))
+        return missing
 
     def _run_ocr(self, image_path: str) -> str:
         if not os.path.exists(image_path):
