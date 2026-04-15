@@ -138,6 +138,17 @@ class VisionService:
                 extra={'model_root': model_root, 'lang': settings.vision_ocr_lang, 'use_gpu': use_gpu},
             )
             return cls._ocr_client
+        except ImportError as exc:
+            hint = ''
+            lowered = str(exc).lower()
+            if 'libgl.so.1' in lowered:
+                hint = (
+                    'Не найдена системная библиотека libGL.so.1. '
+                    'Проверьте, что в образе установлены libgl1/libglib2.0-0 '
+                    'или используйте headless-сборку OpenCV.'
+                )
+            logger.exception('vision_ocr_init_failed_import', extra={'hint': hint})
+            return None
         except Exception:
             logger.exception('vision_ocr_init_failed')
             return None
