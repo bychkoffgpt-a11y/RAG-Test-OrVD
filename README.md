@@ -122,7 +122,8 @@ docker compose build \
 В репозитории добавлен автоскрипт `scripts/run_vision_regression.py`, который:
 - генерирует контрольные изображения и PDF с embedded-изображением в `data/`;
 - запускает 5 positive/negative проверок мультимодального API;
-- делает ingestion корпуса A и проверяет retrieval по image-derived OCR-маркеру;
+- делает ingestion корпуса A, отдельно валидирует факт индексации `vision_regression_marker`
+  (документ + число чанков) и только затем проверяет retrieval по image-derived OCR-маркеру;
 - печатает единый PASS/FAIL отчёт и завершает работу с ненулевым кодом при фейле.
 
 Быстрый запуск:

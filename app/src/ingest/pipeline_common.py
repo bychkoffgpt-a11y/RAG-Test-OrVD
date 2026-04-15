@@ -1,4 +1,5 @@
 import logging
+import hashlib
 from pathlib import Path
 
 from qdrant_client.models import PointStruct
@@ -14,6 +15,17 @@ from src.storage.qdrant_repo import QdrantRepo
 from src.vision.service import VisionService
 
 logger = logging.getLogger(__name__)
+
+
+def _stable_point_id(source_type: str, chunk_id: str) -> int:
+    """
+    Детерминированный идентификатор точки для Qdrant.
+
+    Нельзя использовать встроенный hash(), т.к. он рандомизируется между
+    процессами Python и приводит к разным id на повторных ingestion-запусках.
+    """
+    digest = hashlib.sha256(f'{source_type}:{chunk_id}'.encode('utf-8')).digest()
+    return int.from_bytes(digest[:8], byteorder='big', signed=False)
 
 
 def _extract_structured_metadata(chunk_text: str, strategy: str) -> dict:
@@ -143,7 +155,7 @@ def run_pipeline(
                 'clause_ref': structured_metadata['clause_ref'],
                 'modality': 'text',
             }
-            points.append(PointStruct(id=abs(hash((source_type, chunk_id))) % 10**12, vector=vector, payload=payload))
+            points.append(PointStruct(id=_stable_point_id(source_type, chunk_id), vector=vector, payload=payload))
 
             postgres.save_chunk(
                 {
@@ -171,7 +183,7 @@ def run_pipeline(
             }
             points.append(
                 PointStruct(
-                    id=abs(hash((source_type, image_item['chunk_id']))) % 10**12,
+                    id=_stable_point_id(source_type, image_item['chunk_id']),
                     vector=vector,
                     payload=payload,
                 )

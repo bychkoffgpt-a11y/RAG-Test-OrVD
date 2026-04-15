@@ -69,8 +69,17 @@ class Retriever:
         else:
             results.sort(key=lambda x: x['score'], reverse=True)
 
-        filtered: list[dict] = []
+        deduped: list[dict] = []
+        seen_keys: set[tuple[str, str, str]] = set()
         for item in results:
+            key = (item['source_type'], item['doc_id'], item['chunk_id'])
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            deduped.append(item)
+
+        filtered: list[dict] = []
+        for item in deduped:
             primary_score = item['rerank_score'] if item['rerank_score'] is not None else item['score']
             if primary_score < settings.retrieval_min_score:
                 continue
@@ -81,6 +90,7 @@ class Retriever:
             extra={
                 'scope': scope,
                 'total_results': len(results),
+                'deduped_results': len(deduped),
                 'filtered_results': len(filtered),
                 'returned_results': min(len(filtered), top_k),
                 'duration_sec': round(time.perf_counter() - started, 3),
