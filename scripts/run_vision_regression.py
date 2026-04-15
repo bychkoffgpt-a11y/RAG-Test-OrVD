@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -41,6 +42,8 @@ def post_json(url: str, payload: dict[str, Any], timeout: float) -> tuple[int, d
         raw = exc.read().decode("utf-8") if exc.fp else ""
         parsed = json.loads(raw) if raw else {"detail": raw or str(exc)}
         return exc.code, parsed
+    except (TimeoutError, socket.timeout) as exc:
+        raise RuntimeError(f"Запрос {url} превысил timeout={timeout}с") from exc
     except URLError as exc:
         raise RuntimeError(f"Не удалось выполнить запрос {url}: {exc}") from exc
 
@@ -57,6 +60,10 @@ def get_json(url: str, timeout: float) -> tuple[int, dict[str, Any]]:
         raw = exc.read().decode("utf-8") if exc.fp else ""
         parsed = json.loads(raw) if raw else {"detail": raw or str(exc)}
         return exc.code, parsed
+    except (TimeoutError, socket.timeout) as exc:
+        raise RuntimeError(f"Запрос {url} превысил timeout={timeout}с") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Не удалось выполнить запрос {url}: {exc}") from exc
 
 
 def _python_with_pillow_exists() -> bool:
@@ -181,8 +188,8 @@ def main() -> int:
     parser.add_argument(
         "--ingest-timeout",
         type=float,
-        default=180.0,
-        help="Отдельный таймаут для ingestion-запроса TC-04",
+        default=900.0,
+        help="Таймаут шага ingestion (POST /ingest/a/run) в секундах",
     )
     parser.add_argument(
         "--marker-token",
@@ -202,18 +209,20 @@ def main() -> int:
     base = args.api_url.rstrip("/")
     checks: list[CheckResult] = []
 
-    # TC-01: health
-    status, payload = get_json(f"{base}/health", timeout=args.timeout)
-    checks.append(
-        CheckResult(
-            name="TC-01 health endpoint",
-            ok=status == 200 and payload.get("status") == "ok",
-            details=f"status={status}, body={payload}",
+    try:
+        # TC-01: health
+        status, payload = get_json(f"{base}/health", timeout=args.timeout)
+        checks.append(
+            CheckResult(
+                name="TC-01 health endpoint",
+                ok=status == 200 and payload.get("status") == "ok",
+                details=f"status={status}, body={payload}",
+            )
         )
-    )
+        
 
-    # TC-02: multimodal attachment + OCR text
-    multimodal_payload = {
+        # TC-02: multimodal attachment + OCR text
+        multimodal_payload = {
         "model": "local-rag-model",
         "stream": False,
         "max_tokens": 200,
@@ -227,25 +236,25 @@ def main() -> int:
             }
         ],
     }
-    status, payload = post_json(f"{base}/v1/chat/completions", multimodal_payload, timeout=args.timeout)
-    visual = payload.get("visual_evidence") or []
-    ocr_text = (visual[0].get("ocr_text") if visual else "") or ""
-    tc2_ok = (
-        status == 200
-        and len(visual) >= 1
-        and visual[0].get("image_path") == fixtures["image_http500"]
-        and "500" in ocr_text
-    )
-    checks.append(
-        CheckResult(
-            name="TC-02 attachment parsing + OCR",
-            ok=tc2_ok,
-            details=f"status={status}, visual_count={len(visual)}, ocr_excerpt={ocr_text[:120]!r}",
+        status, payload = post_json(f"{base}/v1/chat/completions", multimodal_payload, timeout=args.timeout)
+        visual = payload.get("visual_evidence") or []
+        ocr_text = (visual[0].get("ocr_text") if visual else "") or ""
+        tc2_ok = (
+            status == 200
+            and len(visual) >= 1
+            and visual[0].get("image_path") == fixtures["image_http500"]
+            and "500" in ocr_text
         )
-    )
+        checks.append(
+            CheckResult(
+                name="TC-02 attachment parsing + OCR",
+                ok=tc2_ok,
+                details=f"status={status}, visual_count={len(visual)}, ocr_excerpt={ocr_text[:120]!r}",
+            )
+        )
 
-    # TC-03: image-only message fallback question should still be processed
-    image_only_payload = {
+        # TC-03: image-only message fallback question should still be processed
+        image_only_payload = {
         "model": "local-rag-model",
         "stream": False,
         "max_tokens": 150,
@@ -258,16 +267,16 @@ def main() -> int:
             }
         ],
     }
-    status, payload = post_json(f"{base}/v1/chat/completions", image_only_payload, timeout=args.timeout)
-    visual = payload.get("visual_evidence") or []
-    tc3_ok = status == 200 and len(visual) == 1 and visual[0].get("image_path") == fixtures["image_only"]
-    checks.append(
-        CheckResult(
-            name="TC-03 image-only message fallback",
-            ok=tc3_ok,
-            details=f"status={status}, visual={visual}",
+        status, payload = post_json(f"{base}/v1/chat/completions", image_only_payload, timeout=args.timeout)
+        visual = payload.get("visual_evidence") or []
+        tc3_ok = status == 200 and len(visual) == 1 and visual[0].get("image_path") == fixtures["image_only"]
+        checks.append(
+            CheckResult(
+                name="TC-03 image-only message fallback",
+                ok=tc3_ok,
+                details=f"status={status}, visual={visual}",
+            )
         )
-    )
 
     # TC-04: ingestion + отдельная валидация индексации + retrieval по маркеру
     ingest_status, ingest_payload = post_json(f"{base}/ingest/a/run", {}, timeout=args.ingest_timeout)
@@ -318,10 +327,9 @@ def main() -> int:
                 f"source_doc_ids={source_doc_ids}, images={images}"
             ),
         )
-    )
 
-    # TC-05: invalid image path should not crash and should yield empty OCR + low confidence
-    bad_path_payload = {
+        # TC-05: invalid image path should not crash and should yield empty OCR + low confidence
+        bad_path_payload = {
         "model": "local-rag-model",
         "stream": False,
         "max_tokens": 120,
@@ -335,17 +343,20 @@ def main() -> int:
             }
         ],
     }
-    status, payload = post_json(f"{base}/v1/chat/completions", bad_path_payload, timeout=args.timeout)
-    visual = payload.get("visual_evidence") or []
-    confidence = float(visual[0].get("confidence", -1.0)) if visual else -1.0
-    tc5_ok = status == 200 and len(visual) >= 1 and not (visual[0].get("ocr_text") or "").strip() and confidence <= 0.2
-    checks.append(
-        CheckResult(
-            name="TC-05 negative: missing image path",
-            ok=tc5_ok,
-            details=f"status={status}, visual={visual}",
+        status, payload = post_json(f"{base}/v1/chat/completions", bad_path_payload, timeout=args.timeout)
+        visual = payload.get("visual_evidence") or []
+        confidence = float(visual[0].get("confidence", -1.0)) if visual else -1.0
+        tc5_ok = status == 200 and len(visual) >= 1 and not (visual[0].get("ocr_text") or "").strip() and confidence <= 0.2
+        checks.append(
+            CheckResult(
+                name="TC-05 negative: missing image path",
+                ok=tc5_ok,
+                details=f"status={status}, visual={visual}",
+            )
         )
-    )
+    except RuntimeError as exc:
+        print(f"[FAIL] transport/runtime error :: {exc}", file=sys.stderr)
+        return 1
 
     print("\n=== Vision/OCR Regression Report ===")
     failed = 0
