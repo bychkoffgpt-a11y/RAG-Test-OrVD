@@ -207,6 +207,8 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
         PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
         INCLUDE_INGEST_DEPS: 1
+        TORCH_DEVICE: ${INGEST_TORCH_DEVICE:-cuda}
+        PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu124}
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}
         DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}
     profiles: ["manual"]
@@ -218,6 +220,11 @@ services:
       LLM_BASE_URL: http://llm-server:8080
       FILE_STORAGE_ROOT: /data
       LOKI_URL: http://loki:3100
+      EMBEDDING_DEVICE: ${INGEST_EMBEDDING_DEVICE:-cuda}
+      EMBEDDING_DEVICE_STRICT: ${INGEST_EMBEDDING_DEVICE_STRICT:-0}
+      RERANKER_DEVICE: ${INGEST_RERANKER_DEVICE:-cuda}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     command: ["python", "-m", "src.ingest.pipeline_a", "--input", "/data/inbox/csv_ans_docs"]
     volumes:
       - ./data:/data
@@ -227,6 +234,7 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+    gpus: all
     networks: [rag_net]
 
   ingest-b:
@@ -243,6 +251,8 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
         PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
         INCLUDE_INGEST_DEPS: 1
+        TORCH_DEVICE: ${INGEST_TORCH_DEVICE:-cuda}
+        PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu124}
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}
         DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}
     profiles: ["manual"]
@@ -254,6 +264,11 @@ services:
       LLM_BASE_URL: http://llm-server:8080
       FILE_STORAGE_ROOT: /data
       LOKI_URL: http://loki:3100
+      EMBEDDING_DEVICE: ${INGEST_EMBEDDING_DEVICE:-cuda}
+      EMBEDDING_DEVICE_STRICT: ${INGEST_EMBEDDING_DEVICE_STRICT:-0}
+      RERANKER_DEVICE: ${INGEST_RERANKER_DEVICE:-cuda}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     command: ["python", "-m", "src.ingest.pipeline_b", "--input", "/data/inbox/internal_regulations"]
     volumes:
       - ./data:/data
@@ -263,4 +278,5 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+    gpus: all
     networks: [rag_net]

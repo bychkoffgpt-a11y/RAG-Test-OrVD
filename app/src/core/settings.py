@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     embedding_model_path: str = '/models/embeddings/bge-m3'
     reranker_model_path: str = '/models/reranker/bge-reranker-v2-m3'
     embedding_device: str = 'auto'
+    embedding_device_strict: bool = False
     reranker_device: str = 'auto'
 
     vision_enabled: bool = True

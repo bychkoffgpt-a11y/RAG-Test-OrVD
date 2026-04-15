@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from src.embeddings.client import EmbeddingClient
@@ -39,3 +40,38 @@ def test_embed_fallbacks_to_cpu_when_cuda_encode_fails(monkeypatch, tmp_path):
     assert result == [0.11, 0.22, 0.33]
     assert EmbeddingClient._device == 'cpu'
 
+
+def test_resolve_device_cuda_fallbacks_to_cpu_when_not_strict(monkeypatch):
+    class _FakeCuda:
+        @staticmethod
+        def is_available():
+            return False
+
+    class _FakeTorch:
+        cuda = _FakeCuda()
+
+    monkeypatch.setattr('src.embeddings.client.settings.embedding_device_strict', False)
+    monkeypatch.setitem(sys.modules, 'torch', _FakeTorch())
+
+    resolved = EmbeddingClient._resolve_device('cuda')
+
+    assert resolved == 'cpu'
+
+
+def test_resolve_device_cuda_raises_when_not_available_and_strict(monkeypatch):
+    class _FakeCuda:
+        @staticmethod
+        def is_available():
+            return False
+
+    class _FakeTorch:
+        cuda = _FakeCuda()
+
+    monkeypatch.setattr('src.embeddings.client.settings.embedding_device_strict', True)
+    monkeypatch.setitem(sys.modules, 'torch', _FakeTorch())
+
+    try:
+        EmbeddingClient._resolve_device('cuda')
+        assert False, 'Ожидалось исключение при строгом режиме CUDA'
+    except RuntimeError as exc:
+        assert 'no CUDA device is available' in str(exc)
