@@ -38,6 +38,40 @@ class _FakeQdrant:
         ]
 
 
+class _FakeQdrantWithDuplicates:
+    def search(self, collection, query_vector, limit):
+        assert query_vector == [0.1, 0.2, 0.3]
+        assert limit == 8
+        if collection == "csv_ans_docs":
+            return [
+                SimpleNamespace(
+                    id="1",
+                    score=0.91,
+                    payload={
+                        "doc_id": "vision_regression_marker",
+                        "source_type": "csv_ans_docs",
+                        "page_number": 1,
+                        "chunk_id": "vision_regression_marker_ch_0",
+                        "text": "ERR-9A7K-UNIQUE",
+                        "image_paths": ["m1.png"],
+                    },
+                ),
+                SimpleNamespace(
+                    id="99",
+                    score=0.90,
+                    payload={
+                        "doc_id": "vision_regression_marker",
+                        "source_type": "csv_ans_docs",
+                        "page_number": 1,
+                        "chunk_id": "vision_regression_marker_ch_0",
+                        "text": "ERR-9A7K-UNIQUE",
+                        "image_paths": ["m1.png"],
+                    },
+                ),
+            ]
+        return []
+
+
 def test_retrieve_merges_reranks_sorts_and_limits(monkeypatch):
     monkeypatch.setattr("src.rag.retriever.EmbeddingClient.embed", lambda question: [0.1, 0.2, 0.3])
     monkeypatch.setattr("src.rag.retriever.RerankerClient.rerank", lambda q, docs: [0.2, 0.8])
@@ -91,3 +125,19 @@ def test_retrieve_filters_low_relevance(monkeypatch):
     result = retriever.retrieve("test", top_k=3, scope="all")
 
     assert result == []
+
+
+def test_retrieve_deduplicates_same_chunk(monkeypatch):
+    monkeypatch.setattr("src.rag.retriever.EmbeddingClient.embed", lambda question: [0.1, 0.2, 0.3])
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_candidate_pool_multiplier", 1)
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_min_score", 0.1)
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_use_reranker", False)
+
+    retriever = Retriever()
+    retriever.qdrant = _FakeQdrantWithDuplicates()
+
+    result = retriever.retrieve("marker", top_k=8, scope="all")
+
+    assert len(result) == 1
+    assert result[0]["doc_id"] == "vision_regression_marker"
+    assert result[0]["chunk_id"] == "vision_regression_marker_ch_0"

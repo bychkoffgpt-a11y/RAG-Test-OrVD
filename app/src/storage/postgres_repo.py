@@ -59,3 +59,29 @@ class PostgresRepo:
             if not row:
                 return None
             return row[0]
+
+    def document_exists(self, source_type: str, doc_id: str) -> bool:
+        with connect(self.dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                FROM documents
+                WHERE source_type = %s AND doc_id = %s
+                LIMIT 1
+                """,
+                (source_type, doc_id),
+            )
+            return cur.fetchone() is not None
+
+    def chunk_count_for_document(self, source_type: str, doc_id: str) -> int:
+        with connect(self.dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COUNT(*)
+                FROM chunks
+                WHERE source_type = %s AND doc_id = %s
+                """,
+                (source_type, doc_id),
+            )
+            row = cur.fetchone()
+            return int(row[0]) if row else 0

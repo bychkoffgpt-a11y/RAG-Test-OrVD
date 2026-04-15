@@ -159,3 +159,13 @@ def test_run_pipeline_sets_page_number_for_pdf_text_chunks(monkeypatch, tmp_path
 
     text_chunk_pages = [c["page_number"] for c in saved_chunks if c["chunk_id"].endswith("_ch_0") or c["chunk_id"].endswith("_ch_1")]
     assert text_chunk_pages == [1, 2]
+
+
+def test_stable_point_id_is_deterministic():
+    left = pipeline_common._stable_point_id("csv_ans_docs", "vision_regression_marker_ch_0")
+    right = pipeline_common._stable_point_id("csv_ans_docs", "vision_regression_marker_ch_0")
+    changed = pipeline_common._stable_point_id("csv_ans_docs", "vision_regression_marker_ch_1")
+
+    assert isinstance(left, int)
+    assert left == right
+    assert left != changed

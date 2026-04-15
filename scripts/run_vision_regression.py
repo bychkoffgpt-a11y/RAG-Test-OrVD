@@ -263,8 +263,12 @@ def main() -> int:
         )
     )
 
-    # TC-04: ingestion + retrieval by marker from image-derived chunk
+    # TC-04: ingestion + отдельная валидация индексации + retrieval по маркеру
     ingest_status, ingest_payload = post_json(f"{base}/ingest/a/run", {}, timeout=max(args.timeout, 180.0))
+    exists_status, exists_payload = get_json(f"{base}/sources/csv_ans_docs/vision_regression_marker/exists", timeout=args.timeout)
+    indexed_doc_present = bool(exists_payload.get("document_exists"))
+    indexed_chunk_count = int(exists_payload.get("chunk_count") or 0)
+
     ask_payload = {
         "question": f"Где встречается маркер {args.marker_token}?",
         "top_k": 8,
@@ -274,11 +278,26 @@ def main() -> int:
     sources = ask_resp.get("sources") or []
     images = ask_resp.get("images") or []
     source_doc_ids = [s.get("doc_id") for s in sources]
+    retrieved_source_types = sorted({(s.get("source_type") or "") for s in sources if s.get("source_type")})
     joined_paths = "\n".join(images + [p for s in sources for p in s.get("image_paths", [])])
+    retrieved_doc_present = "vision_regression_marker" in source_doc_ids
+
+    if ingest_status != 200:
+        tc4_reason = "ingest_failed"
+    elif exists_status != 200 or not indexed_doc_present or indexed_chunk_count <= 0:
+        tc4_reason = "indexing_not_confirmed"
+    elif not retrieved_doc_present:
+        tc4_reason = "indexed_but_not_retrieved"
+    else:
+        tc4_reason = "ok"
+
     tc4_ok = (
         ingest_status == 200
+        and exists_status == 200
+        and indexed_doc_present
+        and indexed_chunk_count > 0
         and ask_status == 200
-        and "vision_regression_marker" in source_doc_ids
+        and retrieved_doc_present
         and "vision_regression_marker" in joined_paths
     )
     checks.append(
@@ -286,7 +305,10 @@ def main() -> int:
             name="TC-04 image-derived retrieval after ingestion",
             ok=tc4_ok,
             details=(
-                f"ingest_status={ingest_status}, ingest={ingest_payload}, ask_status={ask_status}, "
+                f"reason={tc4_reason}, ingest_status={ingest_status}, ingest={ingest_payload}, "
+                f"exists_status={exists_status}, indexed_doc_present={indexed_doc_present}, "
+                f"indexed_chunk_count={indexed_chunk_count}, ask_status={ask_status}, "
+                f"retrieved_doc_present={retrieved_doc_present}, retrieved_source_types={retrieved_source_types}, "
                 f"source_doc_ids={source_doc_ids}, images={images}"
             ),
         )
