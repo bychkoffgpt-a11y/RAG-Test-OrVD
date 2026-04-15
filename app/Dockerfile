@@ -134,11 +134,20 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       }; \
     else \
       echo "[INFO] pip mode: auto -> online index (wheelhouse is empty)"; \
-      install_from_indexes || { \
-        echo "[FAIL] pip install не смог загрузить зависимости из индекса."; \
-        exit 1; \
-      }; \
+        install_from_indexes || { \
+          echo "[FAIL] pip install не смог загрузить зависимости из индекса."; \
+          exit 1; \
+        }; \
     fi
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    set -euo pipefail; \
+    # PaddleOCR подтягивает GUI-сборку OpenCV, которая в рантайме требует libGL.so.1.
+    # Для серверного окружения принудительно переключаемся на headless-вариант:
+    # это снижает риск деградации OCR после обновления образа/зависимостей.
+    python3 -m pip uninstall -y opencv-python opencv-contrib-python || true; \
+    python3 -m pip install --no-build-isolation opencv-contrib-python-headless==4.10.0.84; \
+    python3 -c "import cv2; print(f'[INFO] OpenCV ready: {cv2.__version__}')"
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     set -euo pipefail; \

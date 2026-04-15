@@ -63,6 +63,27 @@ pytest -q --cov=src --cov-report=term-missing
 - Статус: `docker compose ps`
 - Логи API: `docker compose logs -f support-api`
 
+## OCR/vision: защита от ошибки `libGL.so.1` после обновлений
+
+В `support-api` используется PaddleOCR (через OpenCV). Чтобы избежать падений вида
+`ImportError: libGL.so.1` после `git pull`/пересборки:
+- в образе сохраняются системные библиотеки `libgl1` и `libglib2.0-0`;
+- после установки Python-зависимостей выполняется принудительная замена GUI-OpenCV на
+  `opencv-contrib-python-headless` и проверка `import cv2` на этапе сборки.
+
+Рекомендуемая проверка после обновления:
+```bash
+docker compose build --no-cache support-api
+docker compose up -d support-api
+docker compose exec support-api python -c "import cv2; print(cv2.__version__)"
+```
+
+Если в логах всё равно появляется `vision_ocr_init_failed_import`, проверьте фактический образ:
+```bash
+docker compose images support-api
+docker compose exec support-api bash -lc "ldconfig -p | grep libGL.so.1 || true"
+```
+
 ## Логи сервисов и преднастроенные Grafana-запросы (error/warning)
 
 ### Какие логи пишут сервисы в этом репозитории
