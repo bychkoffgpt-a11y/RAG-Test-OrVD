@@ -27,7 +27,9 @@ RUN set -euo pipefail; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       ca-certificates \
-      wget; \
+      wget \
+      libgl1 \
+      libglib2.0-0; \
     if [ "${INCLUDE_INGEST_DEPS}" = "1" ]; then \
       apt-get install -y --no-install-recommends \
         libreoffice \
