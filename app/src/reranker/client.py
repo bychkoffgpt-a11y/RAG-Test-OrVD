@@ -9,6 +9,16 @@ from src.core.settings import settings
 logger = logging.getLogger(__name__)
 
 
+def _is_cuda_runtime_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    needles = (
+        'cuda error',
+        'no kernel image is available for execution on the device',
+        'device-side assert',
+    )
+    return any(needle in text for needle in needles)
+
+
 class RerankerClient:
     _model = None
 
@@ -48,15 +58,31 @@ class RerankerClient:
                     )
 
             device = cls._resolve_device(settings.reranker_device)
-            logger.info('reranker_model_load_started', extra={'model_path': str(model_path), 'device': device})
-            cls._model = CrossEncoder(str(model_path), local_files_only=True, device=device)
-            logger.info('reranker_model_load_finished', extra={'model_path': str(model_path), 'device': device})
+            cls._model = cls._load_model_with_device(str(model_path), device)
         return cls._model
+
+    @staticmethod
+    def _load_model_with_device(model_path: str, device: str) -> CrossEncoder:
+        logger.info('reranker_model_load_started', extra={'model_path': model_path, 'device': device})
+        model = CrossEncoder(model_path, local_files_only=True, device=device)
+        logger.info('reranker_model_load_finished', extra={'model_path': model_path, 'device': device})
+        return model
 
     @classmethod
     def rerank(cls, query: str, documents: list[str]) -> list[float]:
         if not documents:
             return []
         pairs = [[query, doc] for doc in documents]
-        scores = cls.model().predict(pairs, show_progress_bar=False)
+        try:
+            scores = cls.model().predict(pairs, show_progress_bar=False)
+        except Exception as exc:
+            if not _is_cuda_runtime_error(exc):
+                raise
+            logger.warning(
+                'reranker_cuda_fallback_to_cpu',
+                extra={'reason': str(exc), 'configured_device': settings.reranker_device},
+            )
+            model_path = str(Path(settings.reranker_model_path))
+            cls._model = cls._load_model_with_device(model_path, 'cpu')
+            scores = cls._model.predict(pairs, show_progress_bar=False)
         return [float(score) for score in scores]
