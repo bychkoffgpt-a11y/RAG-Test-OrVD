@@ -15,6 +15,27 @@ class VisionService:
     _ocr_client = None
 
     @staticmethod
+    def _build_paddle_ocr(*, model_root: str | None):
+        from paddleocr import PaddleOCR
+
+        use_gpu = VisionService._resolve_ocr_use_gpu()
+        init_kwargs = {
+            'use_angle_cls': settings.vision_ocr_use_angle_cls,
+            'lang': settings.vision_ocr_lang,
+            'show_log': settings.vision_ocr_show_log,
+            'use_gpu': use_gpu,
+        }
+        if model_root:
+            init_kwargs.update(
+                {
+                    'det_model_dir': os.path.join(model_root, 'det'),
+                    'rec_model_dir': os.path.join(model_root, 'rec'),
+                    'cls_model_dir': os.path.join(model_root, 'cls'),
+                }
+            )
+        return PaddleOCR(**init_kwargs), use_gpu
+
+    @staticmethod
     def _resolve_ocr_use_gpu() -> bool:
         preferred = settings.vision_ocr_device.strip().lower()
         if preferred not in {'auto', 'cpu', 'cuda'}:
@@ -120,40 +141,37 @@ class VisionService:
 
         model_root = settings.vision_ocr_model_root
         missing = cls._missing_ocr_artifacts(model_root)
+        has_local_models = not missing
         if missing:
             logger.error(
                 'vision_ocr_models_missing',
                 extra={
                     'model_root': model_root,
                     'missing_files': missing,
-                    'hint': 'OCR веса должны быть предзагружены офлайн; runtime-download в read-only /models невозможен',
+                    'hint': (
+                        'OCR веса не найдены в локальном model_root. '
+                        'Будет выполнена best-effort инициализация PaddleOCR с дефолтными путями.'
+                    ),
                 },
             )
-            return None
 
-        if not os.access(model_root, os.W_OK):
+        if has_local_models and not os.access(model_root, os.W_OK):
             logger.info(
                 'vision_ocr_model_root_readonly',
                 extra={'model_root': model_root},
             )
 
         try:
-            from paddleocr import PaddleOCR
-
-            use_gpu = cls._resolve_ocr_use_gpu()
-            ocr = PaddleOCR(
-                use_angle_cls=settings.vision_ocr_use_angle_cls,
-                lang=settings.vision_ocr_lang,
-                show_log=settings.vision_ocr_show_log,
-                use_gpu=use_gpu,
-                det_model_dir=os.path.join(model_root, 'det'),
-                rec_model_dir=os.path.join(model_root, 'rec'),
-                cls_model_dir=os.path.join(model_root, 'cls'),
-            )
+            ocr, use_gpu = cls._build_paddle_ocr(model_root=model_root if has_local_models else None)
             cls._ocr_client = ocr
             logger.info(
                 'vision_ocr_initialized',
-                extra={'model_root': model_root, 'lang': settings.vision_ocr_lang, 'use_gpu': use_gpu},
+                extra={
+                    'model_root': model_root if has_local_models else 'paddle_default',
+                    'lang': settings.vision_ocr_lang,
+                    'use_gpu': use_gpu,
+                    'has_local_models': has_local_models,
+                },
             )
             return cls._ocr_client
         except ImportError as exc:
