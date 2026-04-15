@@ -25,12 +25,23 @@ class EmbeddingClient:
             import torch
         except Exception:
             if normalized == 'cuda':
-                raise RuntimeError('CUDA device requested for embeddings, but torch is unavailable')
+                if settings.embedding_device_strict:
+                    raise RuntimeError('CUDA device requested for embeddings, but torch is unavailable')
+                logger.warning(
+                    'embedding_cuda_unavailable_fallback_cpu',
+                    extra={'reason': 'torch_unavailable', 'requested_device': normalized},
+                )
             return 'cpu'
 
         if normalized == 'cuda':
             if not torch.cuda.is_available():
-                raise RuntimeError('CUDA device requested for embeddings, but no CUDA device is available')
+                if settings.embedding_device_strict:
+                    raise RuntimeError('CUDA device requested for embeddings, but no CUDA device is available')
+                logger.warning(
+                    'embedding_cuda_unavailable_fallback_cpu',
+                    extra={'reason': 'cuda_device_unavailable', 'requested_device': normalized},
+                )
+                return 'cpu'
             return 'cuda'
 
         return 'cuda' if torch.cuda.is_available() else 'cpu'
