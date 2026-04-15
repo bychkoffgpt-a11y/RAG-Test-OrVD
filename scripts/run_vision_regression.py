@@ -65,17 +65,21 @@ def _python_with_pillow_exists() -> bool:
 
 
 def generate_assets(data_dir: Path, marker_token: str, prefer_docker: bool) -> dict[str, str]:
-    vision_dir = data_dir / "vision_regression"
-    inbox_a_dir = data_dir / "inbox" / "csv_ans_docs"
+    host_data_dir = data_dir
+    container_data_dir = Path("/data")
+
+    vision_dir = host_data_dir / "vision_regression"
+    inbox_a_dir = host_data_dir / "inbox" / "csv_ans_docs"
     vision_dir.mkdir(parents=True, exist_ok=True)
     inbox_a_dir.mkdir(parents=True, exist_ok=True)
 
-    image_http500 = vision_dir / "tc_http500.png"
-    image_only = vision_dir / "tc_image_only.png"
-    image_marker = vision_dir / "tc_marker.png"
-    marker_pdf = inbox_a_dir / "vision_regression_marker.pdf"
-
-    code = f"""
+    def build_generation_code(
+        image_http500: Path,
+        image_only: Path,
+        image_marker: Path,
+        marker_pdf: Path,
+    ) -> str:
+        return f"""
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
@@ -131,8 +135,24 @@ img.save(marker_pdf, 'PDF', resolution=150.0)
 """
 
     if not prefer_docker and _python_with_pillow_exists():
+        image_http500 = host_data_dir / "vision_regression" / "tc_http500.png"
+        image_only = host_data_dir / "vision_regression" / "tc_image_only.png"
+        image_marker = host_data_dir / "vision_regression" / "tc_marker.png"
+        marker_pdf = host_data_dir / "inbox" / "csv_ans_docs" / "vision_regression_marker.pdf"
+        code = build_generation_code(image_http500, image_only, image_marker, marker_pdf)
         subprocess.run([sys.executable, "-c", code], check=True)
     else:
+        if host_data_dir != container_data_dir:
+            print(
+                "Внимание: docker-ветка генерирует ассеты внутри контейнера по пути /data. "
+                f"Текущий --data-dir={host_data_dir} на хосте не совпадает с контейнерным путём /data.",
+                file=sys.stderr,
+            )
+        image_http500 = container_data_dir / "vision_regression" / "tc_http500.png"
+        image_only = container_data_dir / "vision_regression" / "tc_image_only.png"
+        image_marker = container_data_dir / "vision_regression" / "tc_marker.png"
+        marker_pdf = container_data_dir / "inbox" / "csv_ans_docs" / "vision_regression_marker.pdf"
+        code = build_generation_code(image_http500, image_only, image_marker, marker_pdf)
         cmd = [
             "docker",
             "compose",
