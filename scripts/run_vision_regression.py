@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import socket
@@ -44,6 +45,11 @@ def post_json(url: str, payload: dict[str, Any], timeout: float) -> tuple[int, d
         return exc.code, parsed
     except (TimeoutError, socket.timeout) as exc:
         raise RuntimeError(f"Запрос {url} превысил timeout={timeout}с") from exc
+    except http.client.RemoteDisconnected as exc:
+        raise RuntimeError(
+            f"Удалённый сервер разорвал соединение без ответа для {url}. "
+            "Проверьте, что support-api запущен и принимает HTTP-запросы."
+        ) from exc
     except URLError as exc:
         raise RuntimeError(f"Не удалось выполнить запрос {url}: {exc}") from exc
 
@@ -62,6 +68,11 @@ def get_json(url: str, timeout: float) -> tuple[int, dict[str, Any]]:
         return exc.code, parsed
     except (TimeoutError, socket.timeout) as exc:
         raise RuntimeError(f"Запрос {url} превысил timeout={timeout}с") from exc
+    except http.client.RemoteDisconnected as exc:
+        raise RuntimeError(
+            f"Удалённый сервер разорвал соединение без ответа для {url}. "
+            "Проверьте, что support-api запущен и принимает HTTP-запросы."
+        ) from exc
     except URLError as exc:
         raise RuntimeError(f"Не удалось выполнить запрос {url}: {exc}") from exc
 
