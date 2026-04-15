@@ -179,6 +179,12 @@ def main() -> int:
     parser.add_argument("--data-dir", default="data", help="Путь к data (смонтирован в контейнер как /data)")
     parser.add_argument("--timeout", type=float, default=90.0, help="Таймаут HTTP-запросов в секундах")
     parser.add_argument(
+        "--ingest-timeout",
+        type=float,
+        default=180.0,
+        help="Отдельный таймаут для ingestion-запроса TC-04",
+    )
+    parser.add_argument(
         "--marker-token",
         default="ERR-9A7K-UNIQUE",
         help="Уникальный маркер для проверки retrieval по image-derived chunk",
@@ -264,7 +270,7 @@ def main() -> int:
     )
 
     # TC-04: ingestion + отдельная валидация индексации + retrieval по маркеру
-    ingest_status, ingest_payload = post_json(f"{base}/ingest/a/run", {}, timeout=max(args.timeout, 180.0))
+    ingest_status, ingest_payload = post_json(f"{base}/ingest/a/run", {}, timeout=args.ingest_timeout)
     exists_status, exists_payload = get_json(f"{base}/sources/csv_ans_docs/vision_regression_marker/exists", timeout=args.timeout)
     indexed_doc_present = bool(exists_payload.get("document_exists"))
     indexed_chunk_count = int(exists_payload.get("chunk_count") or 0)
