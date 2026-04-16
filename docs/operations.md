@@ -84,6 +84,23 @@ docker compose images support-api
 docker compose exec support-api bash -lc "ldconfig -p | grep libGL.so.1 || true"
 ```
 
+### Troubleshooting: `vision_ocr_init_failed_import` (ingest-a)
+
+Если ошибка возникает в `ingest-a` (а не в `support-api`), проверьте OCR-стек через preflight:
+```bash
+./scripts/preflight_check.sh --mode offline --check-ocr-stack
+```
+
+Проверка внутри `ingest-a` выполняет:
+- `python -c "import cv2"`;
+- `ldconfig -p | grep libGL.so.1`.
+
+Если preflight завершился `[FAIL]`, пересоберите ingest-образ и повторите проверку:
+```bash
+docker compose build --no-cache ingest-a
+./scripts/preflight_check.sh --mode offline --check-ocr-stack
+```
+
 ## Логи сервисов и преднастроенные Grafana-запросы (error/warning)
 
 ### Какие логи пишут сервисы в этом репозитории

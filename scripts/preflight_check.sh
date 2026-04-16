@@ -7,10 +7,11 @@ COMPOSE_FILE="${ROOT_DIR}/docker-compose.yml"
 SKIP_DOCKER_CHECK=0
 MODE="offline"
 ONLINE_STRICT_WHEELS=0
+CHECK_OCR_STACK=0
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/preflight_check.sh [--mode offline|online] [--online-strict-wheels] [--skip-docker]
+Usage: ./scripts/preflight_check.sh [--mode offline|online] [--online-strict-wheels] [--check-ocr-stack] [--skip-docker]
 
 Options:
   --mode MODE     Режим проверки:
@@ -20,6 +21,8 @@ Options:
   --online        Эквивалент: --mode online
   --online-strict-wheels
                   В режиме online требовать полный wheelhouse (без fallback на PyPI)
+  --check-ocr-stack
+                  Дополнительно проверить OCR-стек в ingest-a (import cv2 и libGL.so.1)
   --skip-docker   Пропустить docker pull/docker compose config проверки
   -h, --help      Показать справку
 EOF
@@ -46,6 +49,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --online-strict-wheels)
       ONLINE_STRICT_WHEELS=1
+      shift
+      ;;
+    --check-ocr-stack)
+      CHECK_OCR_STACK=1
       shift
       ;;
     -h|--help)
@@ -211,6 +218,28 @@ check_docker_image_tag() {
   ok "Образ доступен: $image"
 }
 
+
+check_ingest_ocr_stack() {
+  [[ "$CHECK_OCR_STACK" -eq 1 ]] || return 0
+
+  if [[ "$SKIP_DOCKER_CHECK" -eq 1 ]]; then
+    warn "OCR-проверка ingest-a пропущена из-за --skip-docker"
+    return 0
+  fi
+
+  echo "[INFO] Проверка OCR-стека в ingest-a (import cv2, libGL.so.1)"
+
+  if ! docker compose -f "$COMPOSE_FILE" run --rm ingest-a python -c "import cv2" >/dev/null; then
+    fail "OCR-стек ingest-a невалиден: внутри контейнера не проходит 'python -c \"import cv2\"'. Подсказка: пересоберите образ ingest-a (например, 'docker compose build --no-cache ingest-a') и повторите preflight."
+  fi
+  ok "ingest-a: import cv2 проходит"
+
+  if ! docker compose -f "$COMPOSE_FILE" run --rm ingest-a bash -lc 'ldconfig -p | grep libGL.so.1' >/dev/null; then
+    fail "OCR-стек ingest-a невалиден: внутри контейнера не найден libGL.so.1. Подсказка: пересоберите образ ingest-a (например, 'docker compose build --no-cache ingest-a') и повторите preflight."
+  fi
+  ok "ingest-a: libGL.so.1 найден"
+}
+
 require_file "$ENV_FILE"
 require_file "$COMPOSE_FILE"
 
@@ -249,5 +278,7 @@ if [[ "$SKIP_DOCKER_CHECK" -eq 0 ]]; then
 else
   warn "Валидация docker compose config пропущена из-за --skip-docker"
 fi
+
+check_ingest_ocr_stack
 
 ok "Preflight проверка завершена успешно"
