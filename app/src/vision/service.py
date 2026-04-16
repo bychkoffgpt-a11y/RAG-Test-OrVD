@@ -9,6 +9,7 @@ from src.api.schemas import AttachmentItem, VisionEvidenceItem
 from src.core.settings import settings
 
 logger = logging.getLogger(__name__)
+_OCR_UNSUPPORTED_IMAGE_EXTENSIONS = {'.jb2', '.jbig2'}
 
 
 class VisionService:
@@ -209,6 +210,9 @@ class VisionService:
     def _run_ocr(self, image_path: str) -> str:
         if not os.path.exists(image_path):
             logger.warning('vision_image_not_found', extra={'image_path': image_path})
+            return ''
+        if Path(image_path).suffix.lower() in _OCR_UNSUPPORTED_IMAGE_EXTENSIONS:
+            logger.warning('vision_ocr_skipped_unsupported_ext', extra={'image_path': image_path})
             return ''
 
         ocr_client = self._get_ocr_client()

@@ -59,6 +59,7 @@ def _extract_pdf_images(reader: PdfReader, *, output_dir: Path, source_path: str
 
     image_paths: list[str] = []
     image_assets: list[dict] = []
+    fallback_pages: set[int] = set()
     for page_idx, page in enumerate(reader.pages, start=1):
         page_images = getattr(page, 'images', []) or []
         image_idx = 0
@@ -74,17 +75,36 @@ def _extract_pdf_images(reader: PdfReader, *, output_dir: Path, source_path: str
                     page_idx,
                     exc,
                 )
-                fallback_paths, fallback_assets = _extract_pdf_images_with_pymupdf(
-                    source_path,
-                    output_dir=output_dir,
-                    page_number=page_idx,
-                )
-                image_paths.extend(fallback_paths)
-                image_assets.extend(fallback_assets)
+                if page_idx not in fallback_pages:
+                    fallback_paths, fallback_assets = _extract_pdf_images_with_pymupdf(
+                        source_path,
+                        output_dir=output_dir,
+                        page_number=page_idx,
+                    )
+                    image_paths.extend(fallback_paths)
+                    image_assets.extend(fallback_assets)
+                    fallback_pages.add(page_idx)
                 break
 
             image_idx += 1
             image_name = getattr(image, 'name', f'page_{page_idx}_{image_idx}.png')
+            image_ext = Path(image_name).suffix.lower().lstrip('.')
+            if image_ext in _OCR_UNSUPPORTED_IMAGE_EXTENSIONS:
+                logger.warning(
+                    "pypdf extracted %s image on page %s, using PyMuPDF fallback",
+                    image_ext,
+                    page_idx,
+                )
+                if page_idx not in fallback_pages:
+                    fallback_paths, fallback_assets = _extract_pdf_images_with_pymupdf(
+                        source_path,
+                        output_dir=output_dir,
+                        page_number=page_idx,
+                    )
+                    image_paths.extend(fallback_paths)
+                    image_assets.extend(fallback_assets)
+                    fallback_pages.add(page_idx)
+                break
             target = output_dir / image_name
             target.write_bytes(image.data)
             path_str = str(target)

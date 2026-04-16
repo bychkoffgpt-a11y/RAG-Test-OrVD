@@ -120,6 +120,35 @@ def test_extract_pdf_images_writes_supported_images(tmp_path, monkeypatch):
     ]
 
 
+def test_extract_pdf_images_uses_pymupdf_for_jb2_even_without_iterator_error(tmp_path, monkeypatch):
+    reader = _ReaderStub([
+        _PageStub([
+            _ImageStub("page_1_1.jb2", b"ignored"),
+        ])
+    ])
+    fallback_target = tmp_path / "page_1_1.png"
+    fallback_target.write_bytes(b"fallback-raster")
+    fallback_paths = [str(fallback_target)]
+    fallback_assets = [{"path": str(fallback_target), "page_number": 1}]
+    pymupdf_calls = []
+
+    def _fallback(path, *, output_dir, page_number):
+        pymupdf_calls.append((path, page_number))
+        return fallback_paths, fallback_assets
+
+    monkeypatch.setattr(pdf_parser, "_extract_pdf_images_with_pymupdf", _fallback)
+
+    image_paths, image_assets = pdf_parser._extract_pdf_images(
+        reader,
+        output_dir=tmp_path,
+        source_path="/tmp/sample.pdf",
+    )
+
+    assert image_paths == fallback_paths
+    assert image_assets == fallback_assets
+    assert pymupdf_calls == [("/tmp/sample.pdf", 1)]
+
+
 def test_extract_pdf_images_with_pymupdf_renders_jb2_to_png(tmp_path, monkeypatch, caplog):
     page = _PageFitzStub(images=[(42,)])
     fake_doc = _DocFitzStub(
