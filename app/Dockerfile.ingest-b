@@ -1,12 +1,22 @@
 # syntax=docker/dockerfile:1.7
 ARG INGEST_BASE_IMAGE=ghcr.io/csv-ans/rag-ingest-base:dev
+
+FROM ${INGEST_BASE_IMAGE} AS builder
+
+WORKDIR /tmp/build
+COPY pyproject.toml /tmp/build/
+COPY src /tmp/build/src
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3 -m pip wheel --no-deps --no-build-isolation --wheel-dir /tmp/dist .
+
 FROM ${INGEST_BASE_IMAGE}
 
 WORKDIR /app
-COPY pyproject.toml /app/
-COPY src /app/src
+COPY --from=builder /tmp/dist /tmp/dist
 
-RUN python3 -m pip install --no-deps --no-build-isolation .
+RUN python3 -m pip install --no-deps --no-cache-dir /tmp/dist/*.whl \
+    && rm -rf /tmp/dist /root/.cache/pip /tmp/pip-*
 
 EXPOSE 8000
 CMD ["python", "-m", "src.ingest.pipeline_b", "--input", "/data/inbox/internal_regulations"]
