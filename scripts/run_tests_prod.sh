@@ -151,6 +151,6 @@ docker compose run --rm --no-deps \
     cd /workspace/app; \
     export PYTHONDONTWRITEBYTECODE=1; \
     python -c 'import pytest' >/dev/null 2>&1 || python -m pip install --disable-pip-version-check pytest==8.3.3 pytest-cov==5.0.0 >/dev/null; \
-    ${quoted_pytest_cmd} --cache-dir=/tmp/pytest-cache"
+    ${quoted_pytest_cmd} -o cache_dir=/tmp/pytest-cache"
 
 log "Tests finished successfully"
