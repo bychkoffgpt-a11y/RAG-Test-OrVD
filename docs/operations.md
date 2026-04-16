@@ -284,6 +284,24 @@ docker compose up -d --build
 3. Зафиксировать новые `SUPPORT_API_DEPS_TAG`/`INGEST_DEPS_TAG` в `.env`/CI.
 4. При изменениях только кода приложения выполнять обычный `docker compose build support-api ingest-a ingest-b` без обновления base image.
 
+Если при сборке ingest-сервисов появляется ошибка:
+`failed to fetch anonymous token ... ghcr.io ... 403 Forbidden`,
+это означает отсутствие anonymous pull для `ghcr.io/csv-ans/rag-ingest-base:*`.
+
+Варианты устранения:
+1. Авторизоваться в GHCR (PAT с `read:packages`):
+   ```bash
+   export GHCR_USER=<github_username>
+   export GHCR_TOKEN=<github_pat_with_read_packages>
+   echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+   docker compose build --no-cache ingest-b
+   ```
+2. Использовать локально собранный base image:
+   ```bash
+   IMAGE_REPO=local/rag-ingest-base DEPS_TAG=dev ./scripts/build_ingest_base.sh
+   INGEST_BASE_IMAGE_REPO=local/rag-ingest-base INGEST_DEPS_TAG=dev docker compose build --no-cache ingest-b
+   ```
+
 ## Кэширование сборки Docker (BuildKit local cache)
 
 Для сервисов `support-api` и `ingest-*` в `docker-compose.yml` включены `cache_from/cache_to` в локальный каталог `.docker-cache/`.
