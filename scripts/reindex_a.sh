@@ -34,4 +34,5 @@ case "$MODE" in
 esac
 
 echo "[INFO] reindex_a режим: $MODE"
+./scripts/preflight_check.sh --mode "$MODE" --check-ocr-stack
 docker compose run --rm ingest-a
