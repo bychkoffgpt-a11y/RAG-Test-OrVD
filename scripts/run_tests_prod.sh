@@ -150,9 +150,7 @@ docker compose run --rm --no-deps \
   bash -lc "set -euo pipefail; \
     cd /workspace/app; \
     export PYTHONDONTWRITEBYTECODE=1; \
-    python - <<'PY' >/dev/null 2>&1 || python -m pip install --disable-pip-version-check pytest==8.3.3 pytest-cov==5.0.0 >/dev/null; \
-import pytest  # noqa: F401
-PY
+    python -c 'import pytest' >/dev/null 2>&1 || python -m pip install --disable-pip-version-check pytest==8.3.3 pytest-cov==5.0.0 >/dev/null; \
     ${quoted_pytest_cmd} --cache-dir=/tmp/pytest-cache"
 
 log "Tests finished successfully"
