@@ -129,6 +129,33 @@ docker compose build \
   --build-arg PIP_TRUSTED_HOST=
 ```
 
+### Troubleshooting: `403 Forbidden` при pull `ghcr.io/csv-ans/rag-ingest-base:*`
+Если при `docker compose build ingest-a`/`ingest-b` возникает ошибка вида:
+`failed to fetch anonymous token ... ghcr.io ... 403 Forbidden`, это означает, что
+реестр GHCR не разрешает anonymous pull для указанного образа/тега.
+
+Рабочие варианты:
+1. Авторизоваться в GHCR и повторить сборку:
+   ```bash
+   export GHCR_USER=<github_username>
+   export GHCR_TOKEN=<github_pat_with_read_packages>
+   echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+   docker compose build --no-cache ingest-b
+   ```
+2. Если вы работаете полностью локально, собрать base image локально и использовать локальный repo/tag:
+   ```bash
+   IMAGE_REPO=local/rag-ingest-base DEPS_TAG=dev ./scripts/build_ingest_base.sh
+   export INGEST_BASE_IMAGE_REPO=local/rag-ingest-base
+   export INGEST_DEPS_TAG=dev
+   docker compose build --no-cache ingest-b
+   ```
+
+Чтобы закрепить локальный вариант, добавьте в `.env`:
+```env
+INGEST_BASE_IMAGE_REPO=local/rag-ingest-base
+INGEST_DEPS_TAG=dev
+```
+
 ## Документация
 - [Архитектура](docs/architecture.md)
 - [Реестр моделей](docs/model_registry.md)
