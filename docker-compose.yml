@@ -75,21 +75,13 @@ services:
   support-api:
     build:
       context: ./app
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.support-api
       cache_from:
         - type=local,src=.docker-cache/support-api
       cache_to:
         - type=local,dest=.docker-cache/support-api,mode=max
       args:
-        PIP_MODE: ${PIP_MODE:-auto}
-        PIP_ONLINE_FALLBACK: ${PIP_ONLINE_FALLBACK:-1}
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
-        PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
-        INCLUDE_INGEST_DEPS: 0
-        TORCH_DEVICE: ${SUPPORT_API_TORCH_DEVICE:-cuda}
-        PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu128}
-        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}
-        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}
+        SUPPORT_API_BASE_IMAGE: ${SUPPORT_API_BASE_IMAGE_REPO:-ghcr.io/csv-ans/rag-support-api-base}:${SUPPORT_API_DEPS_TAG:-dev}
     container_name: support-api
     restart: unless-stopped
     env_file: [.env]
@@ -196,21 +188,13 @@ services:
   ingest-a:
     build:
       context: ./app
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.ingest-a
       cache_from:
-        - type=local,src=.docker-cache/ingest
+        - type=local,src=.docker-cache/ingest-a
       cache_to:
-        - type=local,dest=.docker-cache/ingest,mode=max
+        - type=local,dest=.docker-cache/ingest-a,mode=max
       args:
-        PIP_MODE: ${PIP_MODE:-auto}
-        PIP_ONLINE_FALLBACK: ${PIP_ONLINE_FALLBACK:-1}
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
-        PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
-        INCLUDE_INGEST_DEPS: 1
-        TORCH_DEVICE: ${INGEST_TORCH_DEVICE:-cuda}
-        PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu128}
-        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}
-        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}
+        INGEST_BASE_IMAGE: ${INGEST_BASE_IMAGE_REPO:-ghcr.io/csv-ans/rag-ingest-base}:${INGEST_DEPS_TAG:-dev}
     profiles: ["manual"]
     env_file: [.env]
     environment:
@@ -240,21 +224,13 @@ services:
   ingest-b:
     build:
       context: ./app
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.ingest-b
       cache_from:
-        - type=local,src=.docker-cache/ingest
+        - type=local,src=.docker-cache/ingest-b
       cache_to:
-        - type=local,dest=.docker-cache/ingest,mode=max
+        - type=local,dest=.docker-cache/ingest-b,mode=max
       args:
-        PIP_MODE: ${PIP_MODE:-auto}
-        PIP_ONLINE_FALLBACK: ${PIP_ONLINE_FALLBACK:-1}
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
-        PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
-        INCLUDE_INGEST_DEPS: 1
-        TORCH_DEVICE: ${INGEST_TORCH_DEVICE:-cuda}
-        PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu128}
-        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}
-        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}
+        INGEST_BASE_IMAGE: ${INGEST_BASE_IMAGE_REPO:-ghcr.io/csv-ans/rag-ingest-base}:${INGEST_DEPS_TAG:-dev}
     profiles: ["manual"]
     env_file: [.env]
     environment:

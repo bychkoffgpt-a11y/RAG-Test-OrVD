@@ -256,6 +256,34 @@ docker compose up -d --build
 
 Ранее используемая ручная команда `pip download ...` по списку пакетов всё ещё допустима, но рекомендуется именно `scripts/update_wheels.sh`: скрипт формирует список из `pyproject.toml`, валидирует транзитивные зависимости, поддерживает strict-режим и атомарно заменяет wheelhouse.
 
+### Вынос тяжёлого dependency-слоя в базовые image
+Для ускорения пересборок тяжёлые слои вынесены в отдельные базовые Dockerfile:
+- `app/Dockerfile.support-api-base` — для `support-api`;
+- `app/Dockerfile.ingest-base` — для `ingest-a` и `ingest-b`.
+
+Тонкие сервисные слои:
+- `app/Dockerfile.support-api`;
+- `app/Dockerfile.ingest-a`;
+- `app/Dockerfile.ingest-b`.
+
+Параметры compose:
+- `SUPPORT_API_BASE_IMAGE_REPO` + `SUPPORT_API_DEPS_TAG`;
+- `INGEST_BASE_IMAGE_REPO` + `INGEST_DEPS_TAG`.
+
+Рекомендуемый цикл обновления:
+1. Вычислить dependency-tag и собрать base images:
+   ```bash
+   ./scripts/build_support_api_base.sh
+   ./scripts/build_ingest_base.sh
+   ```
+2. Опубликовать образы при необходимости:
+   ```bash
+   PUSH_IMAGE=1 ./scripts/build_support_api_base.sh
+   PUSH_IMAGE=1 ./scripts/build_ingest_base.sh
+   ```
+3. Зафиксировать новые `SUPPORT_API_DEPS_TAG`/`INGEST_DEPS_TAG` в `.env`/CI.
+4. При изменениях только кода приложения выполнять обычный `docker compose build support-api ingest-a ingest-b` без обновления base image.
+
 ## Кэширование сборки Docker (BuildKit local cache)
 
 Для сервисов `support-api` и `ingest-*` в `docker-compose.yml` включены `cache_from/cache_to` в локальный каталог `.docker-cache/`.
