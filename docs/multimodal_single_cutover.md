@@ -52,6 +52,30 @@ huggingface-cli download BAAI/bge-reranker-v2-m3 \
 
 Для PaddleOCR скачайте offline-модели det/rec/cls и разложите в `models/ocr/{det,rec,cls}`.
 
+> Важно: `scripts/preflight_check.sh` (функция `require_ocr_model_tree`, `components=(det rec cls)`) ожидает, что `inference.pdmodel` и `inference.pdiparams` лежат **непосредственно** в `det/`, `rec/`, `cls/`, без вложенных `*_infer/` каталогов.
+
+Пример раскладки **до / после**:
+
+```text
+# До (НЕПРАВИЛЬНО)
+models/ocr/
+  det/ch_PP-OCRv4_det_infer/inference.pdmodel
+  det/ch_PP-OCRv4_det_infer/inference.pdiparams
+  rec/ch_PP-OCRv4_rec_infer/inference.pdmodel
+  rec/ch_PP-OCRv4_rec_infer/inference.pdiparams
+  cls/ch_ppocr_mobile_v2.0_cls_infer/inference.pdmodel
+  cls/ch_ppocr_mobile_v2.0_cls_infer/inference.pdiparams
+
+# После (ПРАВИЛЬНО)
+models/ocr/
+  det/inference.pdmodel
+  det/inference.pdiparams
+  rec/inference.pdmodel
+  rec/inference.pdiparams
+  cls/inference.pdmodel
+  cls/inference.pdiparams
+```
+
 ## 5) Куда положить файлы в проекте
 
 Итоговая структура (минимум):
