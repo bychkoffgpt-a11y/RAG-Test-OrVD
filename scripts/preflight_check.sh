@@ -111,6 +111,21 @@ require_model_file() {
   ok "Найден файл модели: $file"
 }
 
+require_ocr_model_tree() {
+  local root="$1"
+  local -a components=(det rec cls)
+  local component
+
+  require_dir "$root"
+
+  for component in "${components[@]}"; do
+    local dir="${root}/${component}"
+    require_dir "$dir"
+    require_model_file "${dir}/inference.pdmodel"
+    require_model_file "${dir}/inference.pdiparams"
+  done
+}
+
 require_nonempty_wheelhouse() {
   local dir="$1"
 
@@ -268,6 +283,7 @@ require_dir "$ROOT_DIR/data/inbox/internal_regulations"
 require_model_file "$ROOT_DIR/models/llm/${LLM_MODEL_FILE}"
 require_model_file "$ROOT_DIR/models/embeddings/bge-m3/config.json"
 require_model_file "$ROOT_DIR/models/reranker/bge-reranker-v2-m3/config.json"
+require_ocr_model_tree "$ROOT_DIR/models/ocr"
 
 LLAMA_CPP_IMAGE="${LLAMA_CPP_IMAGE:-ghcr.io/ggerganov/llama.cpp:server-cuda-b4719}"
 check_docker_image_tag "$LLAMA_CPP_IMAGE"
