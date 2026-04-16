@@ -101,6 +101,23 @@ docker compose up -d
 ./scripts/update_wheels.sh --mode refresh
 ```
 
+### Базовые образы для тяжёлого dependency-слоя (`support-api`, `ingest-a`, `ingest-b`)
+Тяжёлые шаги установки зависимостей вынесены в отдельные базовые образы:
+- `app/Dockerfile.support-api-base` → для `support-api`;
+- `app/Dockerfile.ingest-base` → для `ingest-a` и `ingest-b`.
+
+Сервисные образы собираются тонким слоем поверх published base:
+- `app/Dockerfile.support-api` использует `FROM ${SUPPORT_API_BASE_IMAGE_REPO}:${SUPPORT_API_DEPS_TAG}`;
+- `app/Dockerfile.ingest-a` и `app/Dockerfile.ingest-b` используют `FROM ${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}`.
+
+Рекомендуемый процесс:
+1. При изменении зависимостей собрать/опубликовать базовые образы:
+   - `./scripts/build_support_api_base.sh`
+   - `./scripts/build_ingest_base.sh`
+2. Для публикации использовать `PUSH_IMAGE=1`.
+3. Зафиксировать новые теги `SUPPORT_API_DEPS_TAG` и `INGEST_DEPS_TAG` в `.env`/CI.
+4. При неизменных зависимостях не обновлять base image: `docker compose build support-api ingest-a ingest-b` пересоберёт только тонкие сервисные слои.
+
 Для онлайн-сборки можно переопределить primary/mirror индекс Python-пакетов через build args:
 ```bash
 docker compose build \

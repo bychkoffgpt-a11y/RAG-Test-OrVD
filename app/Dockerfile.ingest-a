@@ -1,0 +1,12 @@
+# syntax=docker/dockerfile:1.7
+ARG INGEST_BASE_IMAGE=ghcr.io/csv-ans/rag-ingest-base:dev
+FROM ${INGEST_BASE_IMAGE}
+
+WORKDIR /app
+COPY pyproject.toml /app/
+COPY src /app/src
+
+RUN python3 -m pip install --no-deps --no-build-isolation .
+
+EXPOSE 8000
+CMD ["python", "-m", "src.ingest.pipeline_a", "--input", "/data/inbox/csv_ans_docs"]
