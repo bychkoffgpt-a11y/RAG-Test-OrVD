@@ -8,6 +8,8 @@ from src.core.settings import settings
 
 logger = logging.getLogger(__name__)
 
+_OCR_UNSUPPORTED_IMAGE_EXTENSIONS = {'jb2', 'jbig2'}
+
 
 def _extract_pdf_images_with_pymupdf(
     path: str,
@@ -28,11 +30,23 @@ def _extract_pdf_images_with_pymupdf(
         for image_idx, image_info in enumerate(page.get_images(full=True), start=1):
             xref = image_info[0]
             extracted = doc.extract_image(xref)
-            image_ext = extracted.get("ext", "png")
-            image_bytes = extracted["image"]
-            image_name = f"page_{page_number}_{image_idx}.{image_ext}"
-            target = output_dir / image_name
-            target.write_bytes(image_bytes)
+            image_ext = str(extracted.get("ext", "png")).lower()
+
+            if image_ext in _OCR_UNSUPPORTED_IMAGE_EXTENSIONS:
+                logger.warning(
+                    'pymupdf extracted %s image on page %s, rendering page raster for OCR compatibility',
+                    image_ext,
+                    page_number,
+                )
+                image_name = f"page_{page_number}_{image_idx}.png"
+                target = output_dir / image_name
+                page.get_pixmap(alpha=False).save(target)
+            else:
+                image_bytes = extracted["image"]
+                image_name = f"page_{page_number}_{image_idx}.{image_ext}"
+                target = output_dir / image_name
+                target.write_bytes(image_bytes)
+
             path_str = str(target)
             image_paths.append(path_str)
             image_assets.append({'path': path_str, 'page_number': page_number})
