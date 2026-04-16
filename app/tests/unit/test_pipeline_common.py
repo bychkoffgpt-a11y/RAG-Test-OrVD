@@ -104,6 +104,11 @@ def test_run_pipeline_processes_supported_files_and_skips_others(monkeypatch, tm
     assert len(upserts) == 2
     assert {doc["file_name"] for doc in saved_documents} == {"a.docx", "b.pdf"}
     assert all(chunk["source_type"] == "csv_ans_docs" for chunk in saved_chunks)
+    assert result["diagnostics"] == {
+        "total_image_assets": 2,
+        "total_image_points": 2,
+        "total_image_assets_without_chunks": 0,
+    }
 
 
 def test_run_pipeline_sets_page_number_for_pdf_text_chunks(monkeypatch, tmp_path):
@@ -169,3 +174,55 @@ def test_stable_point_id_is_deterministic():
     assert isinstance(left, int)
     assert left == right
     assert left != changed
+
+
+def test_run_pipeline_tracks_missing_image_chunks_diagnostics(monkeypatch, tmp_path):
+    supported_pdf = tmp_path / "regulation.pdf"
+    supported_pdf.write_text("data")
+
+    class DummyQdrant:
+        def ensure_collection(self, source_type, vector_size):
+            pass
+
+        def upsert_points(self, source_type, points):
+            pass
+
+    class DummyPostgres:
+        def save_document(self, doc):
+            pass
+
+        def save_chunk(self, chunk):
+            pass
+
+    class DummyVision:
+        def build_document_image_chunks(self, image_assets, *, doc_id, source_type):
+            return []
+
+    monkeypatch.setattr(pipeline_common, "QdrantRepo", DummyQdrant)
+    monkeypatch.setattr(pipeline_common, "PostgresRepo", DummyPostgres)
+    monkeypatch.setattr(pipeline_common, "VisionService", lambda: DummyVision())
+    monkeypatch.setattr(pipeline_common, "file_sha256", lambda _: "hash")
+    monkeypatch.setattr(
+        pipeline_common,
+        "_parse_file",
+        lambda path, source_type: {
+            "text": "sample text",
+            "pages": 1,
+            "images": ["raw.jb2"],
+            "image_assets": [{'path': "raw.jb2", 'page_number': 1}],
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_common,
+        "chunk_text",
+        lambda text, chunk_size=900, overlap=120, strategy="fixed": ["sample-chunk"],
+    )
+    monkeypatch.setattr(pipeline_common.EmbeddingClient, "embed", lambda text: [0.1, 0.2])
+
+    result = pipeline_common.run_pipeline(str(tmp_path), "internal_regulations")
+
+    assert result["diagnostics"] == {
+        "total_image_assets": 1,
+        "total_image_points": 0,
+        "total_image_assets_without_chunks": 1,
+    }

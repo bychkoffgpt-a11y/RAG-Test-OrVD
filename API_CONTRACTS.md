@@ -84,6 +84,11 @@ OpenAI-compatible endpoint.
   "source_type": "csv_ans_docs",
   "processed_files": 12,
   "created_points": 430,
+  "diagnostics": {
+    "total_image_assets": 20,
+    "total_image_points": 18,
+    "total_image_assets_without_chunks": 2
+  },
   "message": "ok"
 }
 ```
@@ -97,6 +102,11 @@ OpenAI-compatible endpoint.
   "source_type": "internal_regulations",
   "processed_files": 12,
   "created_points": 430,
+  "diagnostics": {
+    "total_image_assets": 20,
+    "total_image_points": 18,
+    "total_image_assets_without_chunks": 2
+  },
   "message": "ok"
 }
 ```

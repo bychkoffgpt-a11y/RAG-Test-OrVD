@@ -42,4 +42,5 @@ class IngestResponse(BaseModel):
     source_type: str
     processed_files: int
     created_points: int
+    diagnostics: dict[str, int] | None = None
     message: str

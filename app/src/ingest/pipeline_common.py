@@ -100,6 +100,9 @@ def run_pipeline(
 
     processed_files = 0
     created_points = 0
+    total_image_assets = 0
+    total_image_points = 0
+    total_image_assets_without_chunks = 0
 
     for file_path in files:
         parsed = _parse_file(file_path, source_type)
@@ -124,13 +127,19 @@ def run_pipeline(
         )
         image_points = _build_image_points(vision, parsed, doc_id=doc_id, source_type=source_type)
         image_assets_count = len(parsed.get('image_assets') or [])
+        image_points_count = len(image_points)
+        missing_image_chunks = max(0, image_assets_count - image_points_count)
+        total_image_assets += image_assets_count
+        total_image_points += image_points_count
+        total_image_assets_without_chunks += missing_image_chunks
         logger.info(
             'ingest_image_assets_processed',
             extra={
                 'doc_id': doc_id,
                 'source_type': source_type,
                 'image_assets_count': image_assets_count,
-                'image_points_count': len(image_points),
+                'image_points_count': image_points_count,
+                'missing_image_chunks': missing_image_chunks,
             },
         )
         if image_assets_count > 0 and not image_points:
@@ -209,5 +218,10 @@ def run_pipeline(
         'source_type': source_type,
         'processed_files': processed_files,
         'created_points': created_points,
+        'diagnostics': {
+            'total_image_assets': total_image_assets,
+            'total_image_points': total_image_points,
+            'total_image_assets_without_chunks': total_image_assets_without_chunks,
+        },
         'message': f'Индексация {source_type} завершена',
     }

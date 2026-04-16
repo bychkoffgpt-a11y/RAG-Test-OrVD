@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+from unittest.mock import Mock
 
 from src.api.schemas import AttachmentItem
 from src.vision.service import VisionService
@@ -73,3 +74,16 @@ def test_resolve_ocr_use_gpu_cuda_raises_without_cuda_runtime(monkeypatch):
         assert False, 'Expected RuntimeError for missing CUDA runtime'
     except RuntimeError as exc:
         assert 'CUDA device requested for OCR' in str(exc)
+
+
+def test_run_ocr_skips_unsupported_jbig2_extension(tmp_path, monkeypatch):
+    image = tmp_path / 'scan.jb2'
+    image.write_bytes(b'fake')
+    service = VisionService()
+    ocr_mock = Mock()
+    monkeypatch.setattr(service, '_get_ocr_client', lambda: ocr_mock)
+
+    result = service._run_ocr(str(image))
+
+    assert result == ''
+    ocr_mock.ocr.assert_not_called()
