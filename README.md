@@ -88,6 +88,7 @@ docker compose up -d
 ./scripts/update_app.sh --mode offline
 ./scripts/update_app.sh --mode online
 ./scripts/update_app.sh --mode online --build   # принудительная пересборка
+./scripts/update_app.sh --files-only            # только безопасный git fetch/pull без остановки/перезапуска контейнеров
 ```
 
 Если нужен «чистый» старт без существующих данных, отдельно используйте `docker compose down -v`.

@@ -3,6 +3,7 @@ set -euo pipefail
 MODE="offline"
 FORCE_BUILD=0
 ONLINE_STRICT_WHEELS=0
+FILES_ONLY=0
 PIP_INDEX_URL_VALUE="${PIP_INDEX_URL:-https://pypi.org/simple}"
 PIP_FALLBACK_INDEX_URL_VALUE="${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 DEBIAN_MIRROR_VALUE="${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}"
@@ -10,7 +11,7 @@ DEBIAN_SECURITY_MIRROR_VALUE="${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/update_app.sh [--mode offline|online] [--build] [--online-strict-wheels|--allow-pypi-fallback]
+Usage: ./scripts/update_app.sh [--mode offline|online] [--build] [--files-only] [--online-strict-wheels|--allow-pypi-fallback]
 
 Options:
   --mode MODE   Режим обновления:
@@ -19,6 +20,7 @@ Options:
   --offline     Эквивалент: --mode offline
   --online      Эквивалент: --mode online
   --build       Принудительная пересборка support-api, даже если входы образа не менялись
+  --files-only  Только безопасно обновить файлы из Git (fetch + pull), без остановки, пересборки и перезапуска контейнеров
   --online-strict-wheels
                 В режиме online требовать полный wheelhouse и отключать fallback на PyPI
   --allow-pypi-fallback
@@ -120,6 +122,10 @@ while [[ $# -gt 0 ]]; do
       FORCE_BUILD=1
       shift
       ;;
+    --files-only)
+      FILES_ONLY=1
+      shift
+      ;;
     --online-strict-wheels)
       ONLINE_STRICT_WHEELS=1
       shift
@@ -146,14 +152,20 @@ case "$MODE" in
     ;;
 esac
 
+if [[ "$FILES_ONLY" -eq 1 && "$FORCE_BUILD" -eq 1 ]]; then
+  fail "Параметры --files-only и --build несовместимы"
+fi
+
 ROOT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [[ -n "$ROOT_DIR" ]] || fail "Скрипт нужно запускать внутри Git-репозитория проекта."
 cd "$ROOT_DIR"
 
 require_cmd git
-require_cmd docker
 require_cmd rg
-mkdir -p "$ROOT_DIR/.docker-cache/support-api" "$ROOT_DIR/.docker-cache/ingest"
+if [[ "$FILES_ONLY" -ne 1 ]]; then
+  require_cmd docker
+  mkdir -p "$ROOT_DIR/.docker-cache/support-api" "$ROOT_DIR/.docker-cache/ingest"
+fi
 
 if [[ ! -f "docker-compose.yml" ]]; then
   fail "В корне проекта не найден docker-compose.yml"
@@ -173,10 +185,6 @@ require_clean_git_tree
 
 pre_pull_head="$(git rev-parse HEAD)"
 
-log "Останавливаю приложение (docker compose down --remove-orphans)..."
-docker compose down --remove-orphans
-ok "Компоненты приложения остановлены"
-
 log "Обновляю ссылки на удалённые ветки (git fetch --all --prune)..."
 git fetch --all --prune
 ok "fetch завершён"
@@ -186,6 +194,16 @@ git pull --ff-only
 ok "pull завершён"
 
 post_pull_head="$(git rev-parse HEAD)"
+
+if [[ "$FILES_ONLY" -eq 1 ]]; then
+  ok "Файлы проекта безопасно обновлены без управления контейнерами (--files-only)"
+  log "Готово: выполнены только git fetch/git pull."
+  exit 0
+fi
+
+log "Останавливаю приложение (docker compose down --remove-orphans)..."
+docker compose down --remove-orphans
+ok "Компоненты приложения остановлены"
 
 if [[ -x "./scripts/preflight_check.sh" ]]; then
   log "Запускаю предпусковую проверку (режим: $MODE)..."
