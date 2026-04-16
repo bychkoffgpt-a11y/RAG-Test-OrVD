@@ -186,4 +186,8 @@ if [[ -d "$backup_dir" ]]; then
   rm -rf "$backup_dir"
 fi
 
+# Сохраняем служебный файл для пустого каталога в git.
+# Файл .gitkeep не влияет на установку wheel, но нужен для отслеживания директории.
+touch "${WHEELS_DIR}/.gitkeep"
+
 ok "Wheelhouse успешно пересобран и проверен: $WHEELS_DIR"
