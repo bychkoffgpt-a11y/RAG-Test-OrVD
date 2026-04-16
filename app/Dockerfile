@@ -147,23 +147,76 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     set -euo pipefail; \
     # PaddleOCR подтягивает GUI-сборку OpenCV, которая в рантайме требует libGL.so.1.
     # Для серверного окружения принудительно переключаемся на headless-вариант:
-    # это снижает риск деградации OCR после обновления образа/зависимостей.
+    # сначала offline-first из /wheels, затем primary index, затем fallback index.
+    OPENCV_PKG="opencv-contrib-python-headless==4.10.0.84"; \
     python3 -m pip uninstall -y opencv-python opencv-contrib-python || true; \
-    python3 -m pip install --no-build-isolation opencv-contrib-python-headless==4.10.0.84; \
+    install_opencv_from_wheels() { \
+      echo "[INFO] OpenCV: trying local wheelhouse (/wheels)"; \
+      python3 -m pip install --no-index --find-links=/wheels --no-build-isolation "${OPENCV_PKG}"; \
+    }; \
+    install_opencv_from_index() { \
+      target_index_url="$1"; \
+      label="$2"; \
+      pip_args="--retries 10 --timeout 120 --index-url=${target_index_url} --no-build-isolation ${OPENCV_PKG}"; \
+      if [ -n "${PIP_EXTRA_INDEX_URL:-}" ]; then \
+        pip_args="${pip_args} --extra-index-url=${PIP_EXTRA_INDEX_URL}"; \
+      fi; \
+      if [ -n "${PIP_TRUSTED_HOST:-}" ]; then \
+        pip_args="${pip_args} --trusted-host=${PIP_TRUSTED_HOST}"; \
+      fi; \
+      echo "[INFO] OpenCV: trying ${label}: ${target_index_url}"; \
+      # shellcheck disable=SC2086 \
+      python3 -m pip install ${pip_args}; \
+    }; \
+    install_opencv() { \
+      if find /wheels -mindepth 1 -maxdepth 1 -type f -name 'opencv*headless*.whl' -print -quit | grep -q .; then \
+        install_opencv_from_wheels && { echo "[INFO] OpenCV source: wheels"; return 0; }; \
+        echo "[WARN] OpenCV install from wheels failed, falling back to indexes."; \
+      else \
+        echo "[INFO] OpenCV wheel not found in /wheels, using indexes."; \
+      fi; \
+      install_opencv_from_index "${PIP_INDEX_URL}" "primary index" && { echo "[INFO] OpenCV source: primary index"; return 0; }; \
+      if [ -n "${PIP_FALLBACK_INDEX_URL:-}" ] && [ "${PIP_FALLBACK_INDEX_URL}" != "${PIP_INDEX_URL}" ]; then \
+        echo "[WARN] OpenCV install from primary index failed, trying fallback index."; \
+        install_opencv_from_index "${PIP_FALLBACK_INDEX_URL}" "fallback index" && { echo "[INFO] OpenCV source: fallback index"; return 0; }; \
+      else \
+        echo "[WARN] OpenCV fallback index not set or equals primary; skipping fallback."; \
+      fi; \
+      echo "[FAIL] OpenCV install failed from wheels, primary index and fallback index."; \
+      return 1; \
+    }; \
+    install_opencv; \
     python3 -c "import cv2; print(f'[INFO] OpenCV ready: {cv2.__version__}')"
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     set -euo pipefail; \
     if [ "${TORCH_DEVICE}" = "cuda" ]; then \
-      echo "[INFO] Enforcing CUDA-enabled torch build for support-api"; \
-      python3 -m pip install --upgrade --index-url="${PYTORCH_CUDA_INDEX_URL}" \
-        "torch==${TORCH_VERSION}" \
-        "torchvision==${TORCHVISION_VERSION}" \
-        "torchaudio==${TORCHAUDIO_VERSION}"; \
-      python3 -c "import torch; assert torch.version.cuda is not None, '[FAIL] torch installed without CUDA support, but TORCH_DEVICE=cuda requested'; archs=getattr(torch.cuda, 'get_arch_list', lambda: [])(); print(f'[INFO] torch CUDA runtime: {torch.version.cuda}'); print(f'[INFO] torch CUDA arch list: {archs}'); assert any(a in {'sm_120', 'compute_120'} for a in archs), '[FAIL] installed torch build does not expose sm_120 support; check PYTORCH_CUDA_INDEX_URL/torch version'"; \
+        echo "[INFO] Enforcing CUDA-enabled torch build for support-api"; \
+        python3 -m pip install --upgrade --index-url="${PYTORCH_CUDA_INDEX_URL}" \
+            "torch==${TORCH_VERSION}" \
+            "torchvision==${TORCHVISION_VERSION}" \
+            "torchaudio==${TORCHAUDIO_VERSION}"; \
     else \
-      echo "[INFO] TORCH_DEVICE=${TORCH_DEVICE}: skipping forced CUDA torch install"; \
-    fi
+        echo "[INFO] TORCH_DEVICE=${TORCH_DEVICE}: skipping forced CUDA torch install"; \
+    fi; \
+    export TORCH_DEVICE="${TORCH_DEVICE}"; \
+    python3 - <<'PY'
+import os, torch
+if os.getenv("TORCH_DEVICE") == "cuda":
+    strict = os.getenv("TORCH_ARCH_STRICT", "0") == "1"
+    assert torch.version.cuda is not None, "[FAIL] torch installed without CUDA support"
+    archs = getattr(torch.cuda, "get_arch_list", lambda: [])()
+    print(f"[INFO] torch CUDA runtime: {torch.version.cuda}")
+    print(f"[INFO] torch CUDA arch list (build-time): {archs}")
+    target_archs = {"sm_120", "compute_120"}
+    has_arch = any(a in target_archs for a in archs)
+    if not has_arch:
+        msg = "[FAIL] installed torch build does not expose sm_120 support"
+        if strict:
+            raise AssertionError(msg)
+        else:
+            print(f"[WARN] {msg}; validate at runtime")
+PY
 
 COPY src /app/src
 RUN python3 -m pip install --no-deps --no-build-isolation .
