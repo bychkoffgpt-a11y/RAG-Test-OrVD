@@ -154,3 +154,11 @@ pytest -q --cov=src --cov-report=term-missing
 ```
 
 Перед merge в GitHub необходимо запускать **все** автотесты локально и проверять, что CI `tests` в Pull Request зелёный.
+
+Для уже развёрнутой production-инсталляции доступен отдельный скрипт запуска тестов в одноразовом контейнере (без перезапуска сервисов):
+```bash
+./scripts/run_tests_prod.sh                         # все тесты
+./scripts/run_tests_prod.sh --groups unit          # только unit
+./scripts/run_tests_prod.sh --groups integration   # только integration
+./scripts/run_tests_prod.sh --groups unit,integration --coverage
+```
