@@ -108,7 +108,6 @@ RERANKER_DEVICE=cuda
 # New multimodal settings
 VISION_ENABLED=true
 VISION_INGEST_ENABLED=true
-VISION_MODEL_PATH=/models/vision/qwen3-vl-2b-instruct
 VISION_OCR_MODEL_ROOT=/models/ocr
 VISION_OCR_LANG=ru
 VISION_OCR_DEVICE=auto
