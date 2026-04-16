@@ -170,13 +170,19 @@ docker compose restart grafana
 Что делает скрипт:
 1. Проверяет, что рабочее дерево Git чистое (нет `staged`/`unstaged` изменений).
 2. Проверяет, что запуск идёт из Git-ветки с настроенным `upstream`.
-3. Полностью останавливает стек (`docker compose down --remove-orphans`).
-4. Выполняет `git fetch --all --prune`.
-5. Выполняет `git pull --ff-only`.
+3. Выполняет `git fetch --all --prune`.
+4. Выполняет `git pull --ff-only`.
+5. По умолчанию полностью останавливает стек (`docker compose down --remove-orphans`).
 6. Запускает `./scripts/preflight_check.sh --mode <offline|online>`.
 7. Автоматически определяет, нужен ли rebuild `support-api`:
    - если изменились входы образа (`app/Dockerfile`, `app/pyproject.toml`, `app/src/**`, `app/wheels/**`, `docker-compose.yml`, `.env.example`) или образ отсутствует локально — запускает `docker compose up -d --build`;
    - иначе — запускает `docker compose up -d` без пересборки.
+
+Только безопасно обновить файлы репозитория без управления контейнерами:
+```bash
+./scripts/update_app.sh --files-only
+```
+В этом режиме выполняются только проверки Git + `fetch/pull`; остановка, preflight, пересборка и перезапуск контейнеров не выполняются.
 
 Если нужен «чистый» старт с удалением данных, перед этим выполните отдельно:
 ```bash
