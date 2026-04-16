@@ -87,7 +87,7 @@ services:
         PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
         INCLUDE_INGEST_DEPS: 0
         TORCH_DEVICE: ${SUPPORT_API_TORCH_DEVICE:-cuda}
-        PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu124}
+        PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu128}
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}
         DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}
     container_name: support-api
@@ -208,7 +208,7 @@ services:
         PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
         INCLUDE_INGEST_DEPS: 1
         TORCH_DEVICE: ${INGEST_TORCH_DEVICE:-cuda}
-        PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu124}
+        PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu128}
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}
         DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}
     profiles: ["manual"]
@@ -252,7 +252,7 @@ services:
         PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
         INCLUDE_INGEST_DEPS: 1
         TORCH_DEVICE: ${INGEST_TORCH_DEVICE:-cuda}
-        PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu124}
+        PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu128}
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}
         DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}
     profiles: ["manual"]

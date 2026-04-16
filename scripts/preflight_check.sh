@@ -219,6 +219,50 @@ require_compose_env_refs() {
     || warn "Переменная $key не используется в docker-compose.yml (подсказка: установите ripgrep для более точной проверки)"
 }
 
+version_gte() {
+  local v1="$1"
+  local v2="$2"
+  [[ "$(printf '%s\n' "$v1" "$v2" | sort -V | head -n1)" = "$v2" ]]
+}
+
+required_driver_for_pytorch_cuda_index() {
+  local index_url="$1"
+  case "$index_url" in
+    *"/cu128"*) echo "570.26" ;;
+    *"/cu126"*) echo "560.35" ;;
+    *"/cu124"*) echo "550.54" ;;
+    *) echo "" ;;
+  esac
+}
+
+check_nvidia_driver_cuda_compat() {
+  local index_url="${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
+  local required_driver
+  required_driver="$(required_driver_for_pytorch_cuda_index "$index_url")"
+
+  if [[ -z "$required_driver" ]]; then
+    warn "Неизвестный CUDA runtime в PYTORCH_CUDA_INDEX_URL=$index_url; пропускаю автоматическую проверку версии драйвера NVIDIA"
+    return 0
+  fi
+
+  if ! command -v nvidia-smi >/dev/null 2>&1; then
+    warn "nvidia-smi недоступен на хосте; не удалось автоматически проверить совместимость драйвера NVIDIA с CUDA runtime ($index_url, требуется >= $required_driver)"
+    return 0
+  fi
+
+  local host_driver
+  host_driver="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n1 | tr -d '[:space:]')"
+  if [[ -z "$host_driver" ]]; then
+    fail "Не удалось определить версию драйвера NVIDIA через nvidia-smi"
+  fi
+
+  if version_gte "$host_driver" "$required_driver"; then
+    ok "Совместимость NVIDIA driver ↔ CUDA runtime подтверждена: host=$host_driver, runtime=$index_url (минимум $required_driver)"
+  else
+    fail "Драйвер NVIDIA на хосте слишком старый: host=$host_driver, runtime=$index_url требует >= $required_driver"
+  fi
+}
+
 check_docker_image_tag() {
   local image="$1"
   if [[ "$SKIP_DOCKER_CHECK" -eq 1 ]]; then
@@ -295,6 +339,7 @@ else
   warn "Валидация docker compose config пропущена из-за --skip-docker"
 fi
 
+check_nvidia_driver_cuda_compat
 check_ingest_ocr_stack
 
 ok "Preflight проверка завершена успешно"

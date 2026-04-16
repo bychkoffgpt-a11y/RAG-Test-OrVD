@@ -13,7 +13,10 @@ ARG PIP_MODE=auto
 ARG PIP_ONLINE_FALLBACK=1
 ARG INCLUDE_INGEST_DEPS=0
 ARG TORCH_DEVICE=cuda
-ARG PYTORCH_CUDA_INDEX_URL=https://download.pytorch.org/whl/cu124
+ARG PYTORCH_CUDA_INDEX_URL=https://download.pytorch.org/whl/cu128
+ARG TORCH_VERSION=2.10.0
+ARG TORCHVISION_VERSION=0.25.0
+ARG TORCHAUDIO_VERSION=2.10.0
 ARG DEBIAN_MIRROR=https://mirror.yandex.ru/debian
 ARG DEBIAN_SECURITY_MIRROR=https://mirror.yandex.ru/debian-security
 
@@ -153,8 +156,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     set -euo pipefail; \
     if [ "${TORCH_DEVICE}" = "cuda" ]; then \
       echo "[INFO] Enforcing CUDA-enabled torch build for support-api"; \
-      python3 -m pip install --upgrade --index-url="${PYTORCH_CUDA_INDEX_URL}" torch torchvision torchaudio; \
-      python3 -c "import torch; assert torch.version.cuda is not None, '[FAIL] torch installed without CUDA support, but TORCH_DEVICE=cuda requested'; print(f'[INFO] torch CUDA runtime: {torch.version.cuda}')"; \
+      python3 -m pip install --upgrade --index-url="${PYTORCH_CUDA_INDEX_URL}" \
+        "torch==${TORCH_VERSION}" \
+        "torchvision==${TORCHVISION_VERSION}" \
+        "torchaudio==${TORCHAUDIO_VERSION}"; \
+      python3 -c "import torch; assert torch.version.cuda is not None, '[FAIL] torch installed without CUDA support, but TORCH_DEVICE=cuda requested'; archs=getattr(torch.cuda, 'get_arch_list', lambda: [])(); print(f'[INFO] torch CUDA runtime: {torch.version.cuda}'); print(f'[INFO] torch CUDA arch list: {archs}'); assert any(a in {'sm_120', 'compute_120'} for a in archs), '[FAIL] installed torch build does not expose sm_120 support; check PYTORCH_CUDA_INDEX_URL/torch version'"; \
     else \
       echo "[INFO] TORCH_DEVICE=${TORCH_DEVICE}: skipping forced CUDA torch install"; \
     fi
