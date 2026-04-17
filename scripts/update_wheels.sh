@@ -43,6 +43,48 @@ fail() {
   exit 1
 }
 
+format_duration() {
+  local total_seconds="$1"
+  local hours=$((total_seconds / 3600))
+  local minutes=$(((total_seconds % 3600) / 60))
+  local seconds=$((total_seconds % 60))
+  printf "%02d:%02d:%02d" "$hours" "$minutes" "$seconds"
+}
+
+run_step() {
+  local title="$1"
+  shift
+
+  local started_at
+  started_at="$(date +%s)"
+  echo
+  echo "[STEP] ${title}"
+  echo "[STEP] Команда: $*"
+
+  "$@" &
+  local cmd_pid=$!
+
+  while kill -0 "$cmd_pid" 2>/dev/null; do
+    local now elapsed
+    now="$(date +%s)"
+    elapsed=$((now - started_at))
+    printf "\r[TIMER] %-72s %s" "${title}" "$(format_duration "$elapsed")"
+    sleep 1
+  done
+
+  wait "$cmd_pid"
+  local status=$?
+  local finished_at elapsed_total
+  finished_at="$(date +%s)"
+  elapsed_total=$((finished_at - started_at))
+  printf "\r[TIMER] %-72s %s\n" "${title}" "$(format_duration "$elapsed_total")"
+
+  if [[ "$status" -ne 0 ]]; then
+    fail "Шаг завершился с ошибкой (${status}): ${title}"
+  fi
+  ok "Шаг завершён: ${title} ($(format_duration "$elapsed_total"))"
+}
+
 extract_unreachable_endpoints() {
   local log_file="$1"
   python3 - "$log_file" <<'PY'
@@ -115,7 +157,7 @@ req_file="$(mktemp)"
 trap 'rm -f "$req_file"' EXIT
 
 log "Извлекаю список зависимостей из $PYPROJECT_FILE..."
-python3 - "$PYPROJECT_FILE" "$req_file" "$INCLUDE_DEV" <<'PY'
+run_step "Извлечение зависимостей из pyproject.toml" python3 - "$PYPROJECT_FILE" "$req_file" "$INCLUDE_DEV" <<'PY'
 import pathlib
 import sys
 import tomllib
@@ -142,16 +184,26 @@ for req in requirements:
 out_path.write_text('\n'.join(ordered_unique) + '\n', encoding='utf-8')
 PY
 
+deps_count="$(wc -l < "$req_file" | tr -d ' ')"
+dev_suffix=""
+if [[ "$INCLUDE_DEV" -eq 1 ]]; then
+  dev_suffix=" +dev"
+fi
+log "Найдено зависимостей (прямые + build-system${dev_suffix}): ${deps_count}"
+log "Список зависимостей для проверки wheelhouse:"
+nl -ba "$req_file" | sed 's/^/[REQ] /'
+
 validate_wheelhouse() {
   local wheel_dir="$1"
   local tmp_validate_dir
   tmp_validate_dir="$(mktemp -d)"
+  log "Проверка wheelhouse: pip download --no-index --find-links ${wheel_dir}"
   if ! python3 -m pip download \
     --disable-pip-version-check \
     --dest "$tmp_validate_dir" \
     --no-index \
     --find-links "$wheel_dir" \
-    -r "$req_file" >/dev/null; then
+    -r "$req_file"; then
     rm -rf "$tmp_validate_dir"
     return 1
   fi
@@ -163,6 +215,17 @@ preflight_check_available_versions() {
   local preflight_err_log
   report_file="$(mktemp)"
   preflight_err_log="$(mktemp)"
+  local primary_index
+  local extra_index
+  local fallback_index
+  primary_index="${PIP_INDEX_URL:-<pip default index>}"
+  extra_index="${PIP_EXTRA_INDEX_URL:-<not set>}"
+  fallback_index="${PIP_FALLBACK_INDEX_URL:-<not set>}"
+  log "Проверка доступности зависимостей через индексы:"
+  log "  PIP_INDEX_URL=${primary_index}"
+  log "  PIP_EXTRA_INDEX_URL=${extra_index}"
+  log "  PIP_FALLBACK_INDEX_URL=${fallback_index}"
+
   if ! python3 -m pip install \
     --dry-run \
     --ignore-installed \
@@ -170,7 +233,7 @@ preflight_check_available_versions() {
     --retries "$PIP_RETRIES" \
     --timeout "$PIP_TIMEOUT" \
     --report "$report_file" \
-    -r "$req_file" >/dev/null 2>"$preflight_err_log"; then
+    -r "$req_file" 2>"$preflight_err_log"; then
     local endpoints
     endpoints="$(extract_unreachable_endpoints "$preflight_err_log" || true)"
     rm -f "$preflight_err_log"
@@ -199,18 +262,27 @@ PY
     return 1
   fi
 
+  python3 - "$report_file" <<'PY'
+import json
+import pathlib
+import sys
+
+report_path = pathlib.Path(sys.argv[1])
+payload = json.loads(report_path.read_text(encoding="utf-8"))
+items = payload.get("install", [])
+print(f"[INFO] Предварительная проверка: pip запланировал установку {len(items)} пакетов")
+PY
+
   rm -f "$report_file"
 }
 
 log "Проверяю доступность требуемых версий (включая транзитивные зависимости) до загрузки wheelhouse..."
-if ! preflight_check_available_versions; then
-  fail "Предварительная проверка зависимостей не пройдена: часть версий недоступна или индекс недостижим (retries=${PIP_RETRIES}, timeout=${PIP_TIMEOUT}s)."
-fi
+run_step "Preflight: проверка доступности версий и ссылок индекса" preflight_check_available_versions
 ok "Предварительная проверка зависимостей пройдена"
 
 if [[ "$MODE" == "append" ]]; then
   log "Режим append: докачиваю недостающие wheels в $WHEELS_DIR..."
-  python3 -m pip download \
+  run_step "Append: загрузка wheels в существующий каталог" python3 -m pip download \
     --disable-pip-version-check \
     --retries "$PIP_RETRIES" \
     --timeout "$PIP_TIMEOUT" \
@@ -238,7 +310,7 @@ cleanup_tmp() {
 trap 'cleanup_tmp; rm -f "$req_file"' EXIT
 
 log "Режим refresh: формирую новый wheelhouse во временном каталоге..."
-python3 -m pip download \
+run_step "Refresh: загрузка wheels во временный каталог" python3 -m pip download \
   --disable-pip-version-check \
   --retries "$PIP_RETRIES" \
   --timeout "$PIP_TIMEOUT" \
@@ -256,7 +328,7 @@ else
 fi
 
 if [[ -d "$WHEELS_DIR" ]]; then
-  mv "$WHEELS_DIR" "$backup_dir"
+  run_step "Refresh: создание резервной копии текущего wheelhouse" mv "$WHEELS_DIR" "$backup_dir"
   log "Текущий wheelhouse сохранён в резервную копию: $backup_dir"
 fi
 
@@ -268,7 +340,7 @@ if ! mv "$tmp_wheels_dir" "$WHEELS_DIR"; then
 fi
 
 if [[ -d "$backup_dir" ]]; then
-  rm -rf "$backup_dir"
+  run_step "Refresh: удаление резервной копии wheelhouse" rm -rf "$backup_dir"
 fi
 
 # Сохраняем служебный файл для пустого каталога в git.
