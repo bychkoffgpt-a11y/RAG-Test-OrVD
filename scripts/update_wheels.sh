@@ -8,6 +8,8 @@ WHEELS_DIR="${APP_DIR}/wheels"
 MODE="refresh"
 INCLUDE_DEV=0
 STRICT=0
+PIP_RETRIES="${PIP_RETRIES:-12}"
+PIP_TIMEOUT="${PIP_TIMEOUT:-60}"
 
 usage() {
   cat <<'USAGE'
@@ -21,6 +23,9 @@ Options:
   --mode MODE    refresh|append
   --include-dev  добавить зависимости из project.optional-dependencies.dev
   --strict       завершиться с ошибкой, если wheelhouse неполный/несовместимый
+  Переменные окружения:
+    PIP_RETRIES  количество retries для pip (по умолчанию: 12)
+    PIP_TIMEOUT  таймаут HTTP-запроса pip в секундах (по умолчанию: 60)
   -h, --help     Показать справку
 USAGE
 }
@@ -125,11 +130,53 @@ validate_wheelhouse() {
   rm -rf "$tmp_validate_dir"
 }
 
+preflight_check_available_versions() {
+  local report_file
+  report_file="$(mktemp)"
+  if ! python3 -m pip install \
+    --dry-run \
+    --ignore-installed \
+    --disable-pip-version-check \
+    --retries "$PIP_RETRIES" \
+    --timeout "$PIP_TIMEOUT" \
+    --report "$report_file" \
+    -r "$req_file" >/dev/null; then
+    rm -f "$report_file"
+    return 1
+  fi
+
+  # sanity-check: в отчёте должны быть запланированные установки
+  if ! python3 - "$report_file" <<'PY'
+import json
+import pathlib
+import sys
+
+report_path = pathlib.Path(sys.argv[1])
+payload = json.loads(report_path.read_text(encoding="utf-8"))
+items = payload.get("install", [])
+if not items:
+    raise SystemExit(1)
+PY
+  then
+    rm -f "$report_file"
+    return 1
+  fi
+
+  rm -f "$report_file"
+}
+
+log "Проверяю доступность требуемых версий (включая транзитивные зависимости) до загрузки wheelhouse..."
+if ! preflight_check_available_versions; then
+  fail "Предварительная проверка зависимостей не пройдена: часть версий недоступна или индекс недостижим (retries=${PIP_RETRIES}, timeout=${PIP_TIMEOUT}s)."
+fi
+ok "Предварительная проверка зависимостей пройдена"
+
 if [[ "$MODE" == "append" ]]; then
   log "Режим append: докачиваю недостающие wheels в $WHEELS_DIR..."
   python3 -m pip download \
     --disable-pip-version-check \
-    --retries 10 \
+    --retries "$PIP_RETRIES" \
+    --timeout "$PIP_TIMEOUT" \
     --dest "$WHEELS_DIR" \
     -r "$req_file"
 
@@ -156,7 +203,8 @@ trap 'cleanup_tmp; rm -f "$req_file"' EXIT
 log "Режим refresh: формирую новый wheelhouse во временном каталоге..."
 python3 -m pip download \
   --disable-pip-version-check \
-  --retries 10 \
+  --retries "$PIP_RETRIES" \
+  --timeout "$PIP_TIMEOUT" \
   --dest "$tmp_wheels_dir" \
   -r "$req_file"
 
