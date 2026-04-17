@@ -65,14 +65,22 @@ models/
 ```
 
 Скрипт:
-- скачивает Vision/Embeddings/Reranker через `huggingface-cli`;
+- скачивает LLM/Vision/Embeddings/Reranker через `huggingface-cli`;
 - скачивает OCR-модели PaddleOCR (`det/rec/cls`) по прямым ссылкам;
 - приводит структуру OCR к виду, который ожидает `preflight_check.sh`.
+
+Параметры для LLM можно переопределить через переменные окружения:
+- `LLM_HF_REPO` (по умолчанию `Qwen/Qwen2.5-7B-Instruct-GGUF`);
+- `LLM_MODEL_FILE` (по умолчанию `qwen2.5-7b-instruct-q4_k_m.gguf`).
 
 ### 4.2 Ручной вариант (если нужен пошаговый контроль)
 
 ```bash
 # 1) Hugging Face модели
+hf download Qwen/Qwen2.5-7B-Instruct-GGUF \
+  --include qwen2.5-7b-instruct-q4_k_m.gguf \
+  --local-dir ./models/llm
+
 hf download Qwen/Qwen3-VL-2B-Instruct \
   --local-dir ./models/vision/qwen3-vl-2b-instruct
 
