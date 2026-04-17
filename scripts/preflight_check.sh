@@ -153,15 +153,18 @@ require_vlm_model_tree() {
   ok "Найден файл модели: ${root}/preprocessor_config.json"
   [[ -f "${root}/tokenizer_config.json" ]] || fail "Отсутствует обязательный файл VLM: ${root}/tokenizer_config.json. ${hint}"
   ok "Найден файл модели: ${root}/tokenizer_config.json"
-  [[ -f "${root}/special_tokens_map.json" ]] || fail "Отсутствует обязательный файл VLM: ${root}/special_tokens_map.json. ${hint}"
-  ok "Найден файл модели: ${root}/special_tokens_map.json"
-
   # Для совместимости с разными tokenizer backend проверяем любой валидный набор.
   require_any_model_file "tokenizer backend; разместите артефакты в models/vision/qwen3-vl-2b-instruct" \
     "${root}/tokenizer.json" \
     "${root}/tokenizer.model" \
     "${root}/spiece.model" \
     "${root}/vocab.json"
+
+  if [[ -f "${root}/special_tokens_map.json" ]]; then
+    ok "Найден файл модели: ${root}/special_tokens_map.json"
+  else
+    warn "Файл ${root}/special_tokens_map.json не найден. Продолжаю: используются токены из tokenizer_config.json/tokenizer backend."
+  fi
 }
 
 require_nonempty_wheelhouse() {
