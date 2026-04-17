@@ -18,6 +18,7 @@ need_cmd curl
 need_cmd tar
 
 mkdir -p \
+  "${MODELS_DIR}/llm" \
   "${MODELS_DIR}/vision/qwen3-vl-2b-instruct" \
   "${MODELS_DIR}/embeddings/bge-m3" \
   "${MODELS_DIR}/reranker/bge-reranker-v2-m3" \
@@ -25,7 +26,14 @@ mkdir -p \
   "${MODELS_DIR}/ocr/rec" \
   "${MODELS_DIR}/ocr/cls"
 
+LLM_HF_REPO="${LLM_HF_REPO:-Qwen/Qwen2.5-7B-Instruct-GGUF}"
+LLM_MODEL_FILE="${LLM_MODEL_FILE:-qwen2.5-7b-instruct-q4_k_m.gguf}"
+
 echo "[INFO] Downloading Hugging Face models..."
+hf download "${LLM_HF_REPO}" \
+  --include "${LLM_MODEL_FILE}" \
+  --local-dir "${MODELS_DIR}/llm"
+
 hf download Qwen/Qwen3-VL-2B-Instruct \
   --local-dir "${MODELS_DIR}/vision/qwen3-vl-2b-instruct"
 
@@ -52,4 +60,5 @@ cp "${TMP_DIR}/ch_ppocr_mobile_v2.0_cls_infer/inference.pdmodel" "${MODELS_DIR}/
 cp "${TMP_DIR}/ch_ppocr_mobile_v2.0_cls_infer/inference.pdiparams" "${MODELS_DIR}/ocr/cls/"
 
 echo "[INFO] Model download complete."
+echo "[INFO] LLM path: ${MODELS_DIR}/llm/${LLM_MODEL_FILE}"
 echo "[INFO] Next step: ./scripts/preflight_check.sh --mode offline --check-ocr-stack"
