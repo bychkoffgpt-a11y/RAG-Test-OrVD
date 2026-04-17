@@ -26,6 +26,20 @@
 - Скриншоты проходят OCR + визуальный анализ; результат включается в prompt и возвращается полем `visual_evidence`.
 - Ingest DOCX/PDF извлекает изображения, строит OCR/caption чанки и индексирует их в Qdrant наравне с текстом.
 
+### Переключение vision-режимов (runtime/ingest)
+Для обратной совместимости по умолчанию сохранён OCR-режим.
+
+- `VISION_RUNTIME_MODE=ocr|vlm` — режим распознавания вложений пользователя в runtime (`/ask`, `/v1/chat/completions`).
+- `VISION_INGEST_MODE=ocr|vlm` — режим распознавания изображений, извлечённых из DOCX/PDF в ingest.
+
+Параметры VLM:
+- `VISION_MODEL_PATH=/models/vision/qwen3-vl-2b-instruct`
+- `VISION_MODEL_DEVICE=auto|cpu|cuda`
+- `VISION_MODEL_DTYPE=auto|float32|float16|bfloat16`
+- `VISION_MODEL_MAX_NEW_TOKENS=160`
+- `VISION_MODEL_PROMPT_RUNTIME=...`
+- `VISION_MODEL_PROMPT_INGEST=...`
+
 ## Состав решения
 - Open WebUI (чат-интерфейс)
 - FastAPI (кастомный backend)
@@ -181,6 +195,17 @@ python3 scripts/run_vision_regression.py --api-url http://localhost:8000
 python3 scripts/run_vision_regression.py --help
 python3 scripts/run_vision_regression.py --marker-token ERR-9A7K-UNIQUE
 python3 scripts/run_vision_regression.py --prefer-docker-for-assets
+```
+
+## Проверка корректности распознавания через VLM
+Добавлен отдельный smoke-скрипт `scripts/run_vlm_recognition_checks.py`, который:
+- генерирует runtime-изображения форматов `png/jpeg/bmp/tiff`;
+- проверяет runtime-распознавание через `VisionService` в режиме `VLM`;
+- собирает DOCX/PDF с изображениями, извлекает image assets парсерами и валидирует ingest-распознавание через `VLM`.
+
+Запуск:
+```bash
+python3 scripts/run_vlm_recognition_checks.py --work-dir data/vision_vlm_checks --keep-assets
 ```
 
 > Скрипт ожидает, что `./data` смонтирован в `support-api` как `/data` (штатная конфигурация `docker-compose.yml`).

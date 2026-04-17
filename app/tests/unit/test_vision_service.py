@@ -87,3 +87,39 @@ def test_run_ocr_skips_unsupported_jbig2_extension(tmp_path, monkeypatch):
 
     assert result == ''
     ocr_mock.ocr.assert_not_called()
+
+
+def test_runtime_mode_vlm_uses_vlm_extractor(monkeypatch, tmp_path):
+    image = tmp_path / 'screen.png'
+    image.write_bytes(b'fake')
+    service = VisionService()
+    monkeypatch.setattr('src.vision.service.settings.vision_runtime_mode', 'vlm', raising=False)
+    monkeypatch.setattr(service, '_run_vlm', lambda path, question: 'Detected app error screen')
+    ocr_mock = Mock()
+    monkeypatch.setattr(service, '_run_ocr', ocr_mock)
+
+    evidence = service.analyze_attachments([AttachmentItem(image_path=str(image))], question='Что на экране?')
+
+    assert len(evidence) == 1
+    assert evidence[0].summary
+    assert evidence[0].ocr_text == ''
+    ocr_mock.assert_not_called()
+
+
+def test_ingest_mode_vlm_builds_vlm_chunks(monkeypatch):
+    service = VisionService()
+    monkeypatch.setattr('src.vision.service.settings.vision_ingest_mode', 'vlm', raising=False)
+    monkeypatch.setattr(service, '_run_vlm', lambda path, question: 'Screenshot of settings panel')
+    ocr_mock = Mock()
+    monkeypatch.setattr(service, '_run_ocr', ocr_mock)
+
+    chunks = service.build_document_image_chunks(
+        [{'path': '/tmp/img-vlm.png', 'page_number': 7}],
+        doc_id='DOC-VLM',
+        source_type='internal_regulations',
+    )
+
+    assert len(chunks) == 1
+    assert 'VLM:' in chunks[0]['text']
+    assert 'Screenshot of settings panel' in chunks[0]['text']
+    ocr_mock.assert_not_called()
