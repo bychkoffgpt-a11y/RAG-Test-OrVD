@@ -35,6 +35,11 @@ is_nonempty_file() {
   [[ -f "$path" && -s "$path" ]]
 }
 
+run_and_log() {
+  echo "[CMD] $*"
+  "$@"
+}
+
 ensure_hf_repo_snapshot() {
   local repo="$1"
   local target_dir="$2"
@@ -46,7 +51,7 @@ ensure_hf_repo_snapshot() {
   fi
 
   echo "[INFO] Downloading ${repo} -> ${target_dir}"
-  hf download "${repo}" --local-dir "${target_dir}"
+  run_and_log hf download "${repo}" --local-dir "${target_dir}"
 
   if ! is_nonempty_file "${target_dir}/${marker_file}"; then
     echo "[ERROR] Download finished, but required file is missing: ${target_dir}/${marker_file}" >&2
@@ -76,7 +81,7 @@ ensure_llm_file() {
   fi
 
   echo "[INFO] Downloading LLM from ${repo} (required file: ${required_file})"
-  hf download "${repo}" \
+  run_and_log hf download "${repo}" \
     --include "${required_file}" \
     --local-dir "${target_dir}"
 
@@ -121,20 +126,20 @@ ensure_ocr_models() {
   fi
 
   echo "[INFO] Downloading PaddleOCR det/rec/cls..."
-  curl -fL "https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_det_infer.tar" -o "${TMP_DIR}/det.tar"
-  curl -fL "https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_rec_infer.tar" -o "${TMP_DIR}/rec.tar"
-  curl -fL "https://paddleocr.bj.bcebos.com/dygraph_v2.0/ch/ch_ppocr_mobile_v2.0_cls_infer.tar" -o "${TMP_DIR}/cls.tar"
+  run_and_log curl -fL "https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_det_infer.tar" -o "${TMP_DIR}/det.tar"
+  run_and_log curl -fL "https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_rec_infer.tar" -o "${TMP_DIR}/rec.tar"
+  run_and_log curl -fL "https://paddleocr.bj.bcebos.com/dygraph_v2.0/ch/ch_ppocr_mobile_v2.0_cls_infer.tar" -o "${TMP_DIR}/cls.tar"
 
-  tar -xf "${TMP_DIR}/det.tar" -C "${TMP_DIR}"
-  tar -xf "${TMP_DIR}/rec.tar" -C "${TMP_DIR}"
-  tar -xf "${TMP_DIR}/cls.tar" -C "${TMP_DIR}"
+  run_and_log tar -xf "${TMP_DIR}/det.tar" -C "${TMP_DIR}"
+  run_and_log tar -xf "${TMP_DIR}/rec.tar" -C "${TMP_DIR}"
+  run_and_log tar -xf "${TMP_DIR}/cls.tar" -C "${TMP_DIR}"
 
-  cp "${TMP_DIR}/ch_PP-OCRv4_det_infer/inference.pdmodel" "${MODELS_DIR}/ocr/det/"
-  cp "${TMP_DIR}/ch_PP-OCRv4_det_infer/inference.pdiparams" "${MODELS_DIR}/ocr/det/"
-  cp "${TMP_DIR}/ch_PP-OCRv4_rec_infer/inference.pdmodel" "${MODELS_DIR}/ocr/rec/"
-  cp "${TMP_DIR}/ch_PP-OCRv4_rec_infer/inference.pdiparams" "${MODELS_DIR}/ocr/rec/"
-  cp "${TMP_DIR}/ch_ppocr_mobile_v2.0_cls_infer/inference.pdmodel" "${MODELS_DIR}/ocr/cls/"
-  cp "${TMP_DIR}/ch_ppocr_mobile_v2.0_cls_infer/inference.pdiparams" "${MODELS_DIR}/ocr/cls/"
+  run_and_log cp "${TMP_DIR}/ch_PP-OCRv4_det_infer/inference.pdmodel" "${MODELS_DIR}/ocr/det/"
+  run_and_log cp "${TMP_DIR}/ch_PP-OCRv4_det_infer/inference.pdiparams" "${MODELS_DIR}/ocr/det/"
+  run_and_log cp "${TMP_DIR}/ch_PP-OCRv4_rec_infer/inference.pdmodel" "${MODELS_DIR}/ocr/rec/"
+  run_and_log cp "${TMP_DIR}/ch_PP-OCRv4_rec_infer/inference.pdiparams" "${MODELS_DIR}/ocr/rec/"
+  run_and_log cp "${TMP_DIR}/ch_ppocr_mobile_v2.0_cls_infer/inference.pdmodel" "${MODELS_DIR}/ocr/cls/"
+  run_and_log cp "${TMP_DIR}/ch_ppocr_mobile_v2.0_cls_infer/inference.pdiparams" "${MODELS_DIR}/ocr/cls/"
 }
 
 echo "[INFO] Downloading Hugging Face models..."
