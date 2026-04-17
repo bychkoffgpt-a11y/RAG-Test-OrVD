@@ -65,7 +65,7 @@ models/
 ```
 
 Скрипт:
-- скачивает Vision/Embeddings/Reranker через `hf`;
+- скачивает Vision/Embeddings/Reranker через `huggingface-cli`;
 - скачивает OCR-модели PaddleOCR (`det/rec/cls`) по прямым ссылкам;
 - приводит структуру OCR к виду, который ожидает `preflight_check.sh`.
 
