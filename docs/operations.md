@@ -256,51 +256,27 @@ docker compose up -d --build
 
 Ранее используемая ручная команда `pip download ...` по списку пакетов всё ещё допустима, но рекомендуется именно `scripts/update_wheels.sh`: скрипт формирует список из `pyproject.toml`, валидирует транзитивные зависимости, поддерживает strict-режим и атомарно заменяет wheelhouse.
 
-### Вынос тяжёлого dependency-слоя в базовые image
-Для ускорения пересборок тяжёлые слои вынесены в отдельные базовые Dockerfile:
-- `app/Dockerfile.support-api-base` — для `support-api`;
-- `app/Dockerfile.ingest-base` — для `ingest-a` и `ingest-b`.
+### Пересборка `support-api` без внешнего base image
+`support-api` больше не зависит от `ghcr.io/csv-ans/rag-support-api-base:*` и всегда собирается из локального `app/Dockerfile.support-api`.
 
-Тонкие сервисные слои:
-- `app/Dockerfile.support-api`;
-- `app/Dockerfile.ingest-a`;
-- `app/Dockerfile.ingest-b`.
-
-Параметры compose:
-- `SUPPORT_API_BASE_IMAGE_REPO` + `SUPPORT_API_DEPS_TAG`;
-- `INGEST_BASE_IMAGE_REPO` + `INGEST_DEPS_TAG`.
-
-Рекомендуемый цикл обновления:
-1. Вычислить dependency-tag и собрать base images:
+Поддерживаются два рабочих режима:
+1. **Online full rebuild** — зависимости ставятся из индексов (приоритет `PIP_INDEX_URL`, fallback `PIP_FALLBACK_INDEX_URL`):
    ```bash
-   ./scripts/build_support_api_base.sh
-   ./scripts/build_ingest_base.sh
+   ./scripts/update_app.sh --mode online --build
    ```
-2. Опубликовать образы при необходимости:
+2. **Wheelhouse rebuild** — сборка из локального `app/wheels`:
    ```bash
-   PUSH_IMAGE=1 ./scripts/build_support_api_base.sh
-   PUSH_IMAGE=1 ./scripts/build_ingest_base.sh
+   ./scripts/update_wheels.sh --mode refresh --strict
+   ./scripts/update_app.sh --mode offline --build
    ```
-3. Зафиксировать новые `SUPPORT_API_DEPS_TAG`/`INGEST_DEPS_TAG` в `.env`/CI.
-4. При изменениях только кода приложения выполнять обычный `docker compose build support-api ingest-a ingest-b` без обновления base image.
 
-Если при сборке ingest-сервисов появляется ошибка:
-`failed to fetch anonymous token ... ghcr.io ... 403 Forbidden`,
-это означает отсутствие anonymous pull для `ghcr.io/csv-ans/rag-ingest-base:*`.
+Если добавлены новые зависимости в `app/pyproject.toml`, сначала пополните wheelhouse:
+```bash
+./scripts/update_wheels.sh --mode append
+```
+После этого повторите пересборку контейнера `support-api`.
 
-Варианты устранения:
-1. Авторизоваться в GHCR (PAT с `read:packages`):
-   ```bash
-   export GHCR_USER=<github_username>
-   export GHCR_TOKEN=<github_pat_with_read_packages>
-   echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-   docker compose build --no-cache ingest-b
-   ```
-2. Использовать локально собранный base image:
-   ```bash
-   IMAGE_REPO=local/rag-ingest-base DEPS_TAG=dev ./scripts/build_ingest_base.sh
-   INGEST_BASE_IMAGE_REPO=local/rag-ingest-base INGEST_DEPS_TAG=dev docker compose build --no-cache ingest-b
-   ```
+Для `ingest-a`/`ingest-b` сохраняется схема с базовым образом `${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}`. При ошибках pull GHCR (`403 Forbidden`) используйте `docker login ghcr.io` или локальную сборку `app/Dockerfile.ingest-base`.
 
 ## Кэширование сборки Docker (BuildKit local cache)
 
