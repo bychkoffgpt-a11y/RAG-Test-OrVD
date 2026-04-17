@@ -43,6 +43,34 @@ fail() {
   exit 1
 }
 
+extract_unreachable_endpoints() {
+  local log_file="$1"
+  python3 - "$log_file" <<'PY'
+import pathlib
+import re
+import sys
+
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
+
+patterns = [
+    re.compile(r"HTTPSConnectionPool\(host='([^']+)', port=(\d+)\)"),
+    re.compile(r"Could not fetch URL (\S+):"),
+    re.compile(r"Failed to establish a new connection: \[Errno [^]]+\] [^:]+: '([^']+)'"),
+]
+
+matches = set()
+for pattern in patterns:
+    for hit in pattern.findall(text):
+        if isinstance(hit, tuple):
+            matches.add(f"{hit[0]}:{hit[1]}")
+        else:
+            matches.add(hit.rstrip(".,;"))
+
+if matches:
+    print(", ".join(sorted(matches)))
+PY
+}
+
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Команда не найдена: $1"
 }
@@ -132,7 +160,9 @@ validate_wheelhouse() {
 
 preflight_check_available_versions() {
   local report_file
+  local preflight_err_log
   report_file="$(mktemp)"
+  preflight_err_log="$(mktemp)"
   if ! python3 -m pip install \
     --dry-run \
     --ignore-installed \
@@ -140,10 +170,17 @@ preflight_check_available_versions() {
     --retries "$PIP_RETRIES" \
     --timeout "$PIP_TIMEOUT" \
     --report "$report_file" \
-    -r "$req_file" >/dev/null; then
+    -r "$req_file" >/dev/null 2>"$preflight_err_log"; then
+    local endpoints
+    endpoints="$(extract_unreachable_endpoints "$preflight_err_log" || true)"
+    rm -f "$preflight_err_log"
     rm -f "$report_file"
+    if [[ -n "$endpoints" ]]; then
+      fail "Предварительная проверка зависимостей не пройдена: не удалось подключиться к ${endpoints} (retries=${PIP_RETRIES}, timeout=${PIP_TIMEOUT}s)."
+    fi
     return 1
   fi
+  rm -f "$preflight_err_log"
 
   # sanity-check: в отчёте должны быть запланированные установки
   if ! python3 - "$report_file" <<'PY'
