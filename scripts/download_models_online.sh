@@ -13,7 +13,7 @@ need_cmd() {
   fi
 }
 
-need_cmd huggingface-cli
+need_cmd hf
 need_cmd curl
 need_cmd tar
 
@@ -26,13 +26,13 @@ mkdir -p \
   "${MODELS_DIR}/ocr/cls"
 
 echo "[INFO] Downloading Hugging Face models..."
-huggingface-cli download Qwen/Qwen3-VL-2B-Instruct \
+hf download Qwen/Qwen3-VL-2B-Instruct \
   --local-dir "${MODELS_DIR}/vision/qwen3-vl-2b-instruct"
 
-huggingface-cli download BAAI/bge-m3 \
+hf download BAAI/bge-m3 \
   --local-dir "${MODELS_DIR}/embeddings/bge-m3"
 
-huggingface-cli download BAAI/bge-reranker-v2-m3 \
+hf download BAAI/bge-reranker-v2-m3 \
   --local-dir "${MODELS_DIR}/reranker/bge-reranker-v2-m3"
 
 echo "[INFO] Downloading PaddleOCR det/rec/cls..."

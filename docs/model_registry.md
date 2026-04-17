@@ -73,13 +73,13 @@ models/
 
 ```bash
 # 1) Hugging Face модели
-huggingface-cli download Qwen/Qwen3-VL-2B-Instruct \
+hf download Qwen/Qwen3-VL-2B-Instruct \
   --local-dir ./models/vision/qwen3-vl-2b-instruct
 
-huggingface-cli download BAAI/bge-m3 \
+hf download BAAI/bge-m3 \
   --local-dir ./models/embeddings/bge-m3
 
-huggingface-cli download BAAI/bge-reranker-v2-m3 \
+hf download BAAI/bge-reranker-v2-m3 \
   --local-dir ./models/reranker/bge-reranker-v2-m3
 
 # 2) PaddleOCR det/rec/cls
