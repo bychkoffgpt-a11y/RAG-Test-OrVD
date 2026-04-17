@@ -112,6 +112,19 @@ require_model_file() {
   ok "Найден файл модели: $file"
 }
 
+require_any_model_file() {
+  local desc="$1"
+  shift
+  local file
+  for file in "$@"; do
+    if [[ -f "$file" ]]; then
+      ok "Найден файл модели (${desc}): $file"
+      return 0
+    fi
+  done
+  fail "Не найден ни один обязательный файл (${desc}): $*"
+}
+
 require_ocr_model_tree() {
   local root="$1"
   local -a components=(det rec cls)
@@ -125,6 +138,30 @@ require_ocr_model_tree() {
     require_model_file "${dir}/inference.pdmodel"
     require_model_file "${dir}/inference.pdiparams"
   done
+}
+
+require_vlm_model_tree() {
+  local root="$1"
+  local hint="Подсказка: разместите артефакты VLM в models/vision/qwen3-vl-2b-instruct (или обновите VISION_MODEL_DIR в .env)."
+
+  [[ -d "$root" ]] || fail "Каталог VLM-модели не найден: $root. ${hint}"
+  ok "Найден каталог: $root"
+
+  [[ -f "${root}/config.json" ]] || fail "Отсутствует обязательный файл VLM: ${root}/config.json. ${hint}"
+  ok "Найден файл модели: ${root}/config.json"
+  [[ -f "${root}/preprocessor_config.json" ]] || fail "Отсутствует обязательный файл VLM: ${root}/preprocessor_config.json. ${hint}"
+  ok "Найден файл модели: ${root}/preprocessor_config.json"
+  [[ -f "${root}/tokenizer_config.json" ]] || fail "Отсутствует обязательный файл VLM: ${root}/tokenizer_config.json. ${hint}"
+  ok "Найден файл модели: ${root}/tokenizer_config.json"
+  [[ -f "${root}/special_tokens_map.json" ]] || fail "Отсутствует обязательный файл VLM: ${root}/special_tokens_map.json. ${hint}"
+  ok "Найден файл модели: ${root}/special_tokens_map.json"
+
+  # Для совместимости с разными tokenizer backend проверяем любой валидный набор.
+  require_any_model_file "tokenizer backend; разместите артефакты в models/vision/qwen3-vl-2b-instruct" \
+    "${root}/tokenizer.json" \
+    "${root}/tokenizer.model" \
+    "${root}/spiece.model" \
+    "${root}/vocab.json"
 }
 
 require_nonempty_wheelhouse() {
@@ -316,6 +353,8 @@ RERANKER_MODEL_DIR="${RERANKER_MODEL_DIR:-$MODELS_ROOT_DIR/reranker/bge-reranker
 OCR_MODEL_ROOT_DIR="${OCR_MODEL_ROOT_DIR:-$MODELS_ROOT_DIR/ocr}"
 DATA_INBOX_CSV_ANS_DOCS_DIR="${DATA_INBOX_CSV_ANS_DOCS_DIR:-$ROOT_DIR/data/inbox/csv_ans_docs}"
 DATA_INBOX_INTERNAL_REGULATIONS_DIR="${DATA_INBOX_INTERNAL_REGULATIONS_DIR:-$ROOT_DIR/data/inbox/internal_regulations}"
+VISION_INGEST_MODE="${VISION_INGEST_MODE:-ocr}"
+VISION_RUNTIME_MODE="${VISION_RUNTIME_MODE:-ocr}"
 
 for key in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD WEBUI_SECRET_KEY WEBUI_API_KEY GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD LLM_MODEL_FILE LLM_MODEL_DIR EMBEDDING_MODEL_DIR RERANKER_MODEL_DIR OCR_MODEL_ROOT_DIR; do
   require_nonempty_var "$key"
@@ -338,6 +377,12 @@ require_model_file "$LLM_MODEL_DIR/${LLM_MODEL_FILE}"
 require_model_file "$EMBEDDING_MODEL_DIR/config.json"
 require_model_file "$RERANKER_MODEL_DIR/config.json"
 require_ocr_model_tree "$OCR_MODEL_ROOT_DIR"
+
+if [[ "$VISION_INGEST_MODE" == "vlm" || "$VISION_RUNTIME_MODE" == "vlm" ]]; then
+  require_vlm_model_tree "$VISION_MODEL_DIR"
+else
+  ok "Проверка VLM-артефактов пропущена: VISION_INGEST_MODE=$VISION_INGEST_MODE, VISION_RUNTIME_MODE=$VISION_RUNTIME_MODE"
+fi
 
 LLAMA_CPP_IMAGE="${LLAMA_CPP_IMAGE:-ghcr.io/ggerganov/llama.cpp:server-cuda-b4719}"
 check_docker_image_tag "$LLAMA_CPP_IMAGE"
