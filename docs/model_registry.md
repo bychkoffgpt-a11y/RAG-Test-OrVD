@@ -7,7 +7,7 @@
 
 | Назначение | Зафиксированный артефакт | Локальный путь в проекте | Переменная/настройка |
 |---|---|---|---|
-| LLM (генерация) | `qwen2.5-7b-instruct-q4_k_m.gguf` | `models/llm/qwen2.5-7b-instruct-q4_k_m.gguf` | `LLM_MODEL_FILE` |
+| LLM (генерация) | `Qwen2.5-7B-Instruct-Q4_K_M.gguf` | `models/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf` | `LLM_MODEL_FILE` |
 | Vision (VLM-распознавание) | `Qwen/Qwen3-VL-2B-Instruct` | `models/vision/qwen3-vl-2b-instruct/` | `VISION_MODEL_PATH` |
 | OCR (распознавание текста на изображениях) | `PaddleOCR PP-OCRv4` (`det/rec/cls`) | `models/ocr/{det,rec,cls}/` | `VISION_OCR_MODEL_ROOT` |
 | Embeddings | `BAAI/bge-m3` | `models/embeddings/bge-m3/` | `EMBEDDING_MODEL_PATH` / `embedding_model_path` |
@@ -15,7 +15,7 @@
 
 ## 2) Политика версионирования
 
-- Для LLM версия фиксируется именем GGUF-файла: `qwen2.5-7b-instruct-q4_k_m.gguf`.
+- Для LLM версия фиксируется именем GGUF-файла: `Qwen2.5-7B-Instruct-Q4_K_M.gguf`.
 - Для Vision/Embeddings/Reranker версия фиксируется upstream model id и неизменностью локальных каталогов в `models/`.
 - Для OCR версия фиксируется набором трёх inference-компонентов (`det/rec/cls`) и их контрольными суммами из доверенного источника поставки.
 
@@ -24,7 +24,7 @@
 ```text
 models/
   llm/
-    qwen2.5-7b-instruct-q4_k_m.gguf
+    Qwen2.5-7B-Instruct-Q4_K_M.gguf
   vision/
     qwen3-vl-2b-instruct/
       config.json
@@ -72,15 +72,22 @@ models/
 - для LLM проверяет наличие **конкретной версии** из `LLM_MODEL_FILE`; при отсутствии — скачивает и валидирует, что требуемый файл реально появился.
 
 Параметры для LLM можно переопределить через переменные окружения:
-- `LLM_HF_REPO` (по умолчанию `Qwen/Qwen2.5-7B-Instruct-GGUF`);
-- `LLM_MODEL_FILE` (по умолчанию `qwen2.5-7b-instruct-q4_k_m.gguf`).
+- `LLM_HF_REPO` (по умолчанию `bartowski/Qwen2.5-7B-Instruct-GGUF`);
+- `LLM_MODEL_FILE` (по умолчанию `Qwen2.5-7B-Instruct-Q4_K_M.gguf`).
+
+
+Также скрипты `download_models_online.sh` и `preflight_check.sh` читают `.env` и поддерживают унифицированные переменные путей/репозиториев:
+- `MODELS_ROOT_DIR`, `LLM_MODEL_DIR`, `VISION_MODEL_DIR`, `EMBEDDING_MODEL_DIR`, `RERANKER_MODEL_DIR`, `OCR_MODEL_ROOT_DIR`;
+- `VISION_HF_REPO`, `EMBEDDING_HF_REPO`, `RERANKER_HF_REPO`;
+- `OCR_DET_URL`, `OCR_REC_URL`, `OCR_CLS_URL`;
+- `DATA_INBOX_CSV_ANS_DOCS_DIR`, `DATA_INBOX_INTERNAL_REGULATIONS_DIR`.
 
 ### 4.2 Ручной вариант (если нужен пошаговый контроль)
 
 ```bash
 # 1) Hugging Face модели
-hf download Qwen/Qwen2.5-7B-Instruct-GGUF \
-  --include qwen2.5-7b-instruct-q4_k_m.gguf \
+hf download bartowski/Qwen2.5-7B-Instruct-GGUF \
+  --include Qwen2.5-7B-Instruct-Q4_K_M.gguf \
   --local-dir ./models/llm
 
 hf download Qwen/Qwen3-VL-2B-Instruct \
@@ -114,7 +121,7 @@ cp /tmp/paddle_ocr_dl/ch_ppocr_mobile_v2.0_cls_infer/inference.pdiparams ./model
 
 ```bash
 # Контрольные суммы (пример)
-sha256sum models/llm/qwen2.5-7b-instruct-q4_k_m.gguf
+sha256sum models/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf
 
 # Обязательные файлы
 ./scripts/preflight_check.sh --mode offline --check-ocr-stack

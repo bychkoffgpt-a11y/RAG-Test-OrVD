@@ -9,6 +9,7 @@ MODE="offline"
 ONLINE_STRICT_WHEELS=0
 CHECK_OCR_STACK=0
 
+
 usage() {
   cat <<'EOF'
 Usage: ./scripts/preflight_check.sh [--mode offline|online] [--online-strict-wheels] [--check-ocr-stack] [--skip-docker]
@@ -307,7 +308,16 @@ set -a
 source "$ENV_FILE"
 set +a
 
-for key in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD WEBUI_SECRET_KEY WEBUI_API_KEY GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD LLM_MODEL_FILE; do
+MODELS_ROOT_DIR="${MODELS_ROOT_DIR:-$ROOT_DIR/models}"
+LLM_MODEL_DIR="${LLM_MODEL_DIR:-$MODELS_ROOT_DIR/llm}"
+VISION_MODEL_DIR="${VISION_MODEL_DIR:-$MODELS_ROOT_DIR/vision/qwen3-vl-2b-instruct}"
+EMBEDDING_MODEL_DIR="${EMBEDDING_MODEL_DIR:-$MODELS_ROOT_DIR/embeddings/bge-m3}"
+RERANKER_MODEL_DIR="${RERANKER_MODEL_DIR:-$MODELS_ROOT_DIR/reranker/bge-reranker-v2-m3}"
+OCR_MODEL_ROOT_DIR="${OCR_MODEL_ROOT_DIR:-$MODELS_ROOT_DIR/ocr}"
+DATA_INBOX_CSV_ANS_DOCS_DIR="${DATA_INBOX_CSV_ANS_DOCS_DIR:-$ROOT_DIR/data/inbox/csv_ans_docs}"
+DATA_INBOX_INTERNAL_REGULATIONS_DIR="${DATA_INBOX_INTERNAL_REGULATIONS_DIR:-$ROOT_DIR/data/inbox/internal_regulations}"
+
+for key in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD WEBUI_SECRET_KEY WEBUI_API_KEY GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD LLM_MODEL_FILE LLM_MODEL_DIR EMBEDDING_MODEL_DIR RERANKER_MODEL_DIR OCR_MODEL_ROOT_DIR; do
   require_nonempty_var "$key"
   require_compose_env_refs "$key"
 done
@@ -316,18 +326,18 @@ require_not_placeholder POSTGRES_PASSWORD change_me_strong
 require_not_placeholder WEBUI_SECRET_KEY change_me_secret
 require_not_placeholder GRAFANA_ADMIN_PASSWORD change_me_grafana
 
-require_dir "$ROOT_DIR/models"
-require_dir "$ROOT_DIR/models/llm"
-require_dir "$ROOT_DIR/models/embeddings"
-require_dir "$ROOT_DIR/models/reranker"
+require_dir "$MODELS_ROOT_DIR"
+require_dir "$LLM_MODEL_DIR"
+require_dir "$EMBEDDING_MODEL_DIR"
+require_dir "$RERANKER_MODEL_DIR"
 check_wheelhouse_by_mode "$ROOT_DIR/app/wheels"
-require_dir "$ROOT_DIR/data/inbox/csv_ans_docs"
-require_dir "$ROOT_DIR/data/inbox/internal_regulations"
+require_dir "$DATA_INBOX_CSV_ANS_DOCS_DIR"
+require_dir "$DATA_INBOX_INTERNAL_REGULATIONS_DIR"
 
-require_model_file "$ROOT_DIR/models/llm/${LLM_MODEL_FILE}"
-require_model_file "$ROOT_DIR/models/embeddings/bge-m3/config.json"
-require_model_file "$ROOT_DIR/models/reranker/bge-reranker-v2-m3/config.json"
-require_ocr_model_tree "$ROOT_DIR/models/ocr"
+require_model_file "$LLM_MODEL_DIR/${LLM_MODEL_FILE}"
+require_model_file "$EMBEDDING_MODEL_DIR/config.json"
+require_model_file "$RERANKER_MODEL_DIR/config.json"
+require_ocr_model_tree "$OCR_MODEL_ROOT_DIR"
 
 LLAMA_CPP_IMAGE="${LLAMA_CPP_IMAGE:-ghcr.io/ggerganov/llama.cpp:server-cuda-b4719}"
 check_docker_image_tag "$LLAMA_CPP_IMAGE"

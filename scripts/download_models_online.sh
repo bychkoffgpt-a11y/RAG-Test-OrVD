@@ -2,9 +2,33 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MODELS_DIR="${ROOT_DIR}/models"
+ENV_FILE="${ROOT_DIR}/.env"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
+
+if [[ -f "${ENV_FILE}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${ENV_FILE}"
+  set +a
+fi
+
+MODELS_ROOT_DIR="${MODELS_ROOT_DIR:-${ROOT_DIR}/models}"
+LLM_MODEL_DIR="${LLM_MODEL_DIR:-${MODELS_ROOT_DIR}/llm}"
+VISION_MODEL_DIR="${VISION_MODEL_DIR:-${MODELS_ROOT_DIR}/vision/qwen3-vl-2b-instruct}"
+EMBEDDING_MODEL_DIR="${EMBEDDING_MODEL_DIR:-${MODELS_ROOT_DIR}/embeddings/bge-m3}"
+RERANKER_MODEL_DIR="${RERANKER_MODEL_DIR:-${MODELS_ROOT_DIR}/reranker/bge-reranker-v2-m3}"
+OCR_MODEL_ROOT_DIR="${OCR_MODEL_ROOT_DIR:-${MODELS_ROOT_DIR}/ocr}"
+
+LLM_HF_REPO="${LLM_HF_REPO:-bartowski/Qwen2.5-7B-Instruct-GGUF}"
+LLM_MODEL_FILE="${LLM_MODEL_FILE:-Qwen2.5-7B-Instruct-Q4_K_M.gguf}"
+VISION_HF_REPO="${VISION_HF_REPO:-Qwen/Qwen3-VL-2B-Instruct}"
+EMBEDDING_HF_REPO="${EMBEDDING_HF_REPO:-BAAI/bge-m3}"
+RERANKER_HF_REPO="${RERANKER_HF_REPO:-BAAI/bge-reranker-v2-m3}"
+
+OCR_DET_URL="${OCR_DET_URL:-https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_det_infer.tar}"
+OCR_REC_URL="${OCR_REC_URL:-https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_rec_infer.tar}"
+OCR_CLS_URL="${OCR_CLS_URL:-https://paddleocr.bj.bcebos.com/dygraph_v2.0/ch/ch_ppocr_mobile_v2.0_cls_infer.tar}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -19,16 +43,13 @@ need_cmd tar
 need_cmd find
 
 mkdir -p \
-  "${MODELS_DIR}/llm" \
-  "${MODELS_DIR}/vision/qwen3-vl-2b-instruct" \
-  "${MODELS_DIR}/embeddings/bge-m3" \
-  "${MODELS_DIR}/reranker/bge-reranker-v2-m3" \
-  "${MODELS_DIR}/ocr/det" \
-  "${MODELS_DIR}/ocr/rec" \
-  "${MODELS_DIR}/ocr/cls"
-
-LLM_HF_REPO="${LLM_HF_REPO:-Qwen/Qwen2.5-7B-Instruct-GGUF}"
-LLM_MODEL_FILE="${LLM_MODEL_FILE:-qwen2.5-7b-instruct-q4_k_m.gguf}"
+  "${LLM_MODEL_DIR}" \
+  "${VISION_MODEL_DIR}" \
+  "${EMBEDDING_MODEL_DIR}" \
+  "${RERANKER_MODEL_DIR}" \
+  "${OCR_MODEL_ROOT_DIR}/det" \
+  "${OCR_MODEL_ROOT_DIR}/rec" \
+  "${OCR_MODEL_ROOT_DIR}/cls"
 
 is_nonempty_file() {
   local path="$1"
@@ -70,8 +91,6 @@ ensure_llm_file() {
     return 0
   fi
 
-  # Если файл уже есть в каталоге, но только в другом регистре имени (например, Q4_K_M),
-  # приводим его к ожидаемому имени из LLM_MODEL_FILE.
   local existing_case_variant=""
   existing_case_variant="$(find "${target_dir}" -maxdepth 1 -type f -iname "${required_file}" -print -quit)"
   if [[ -n "${existing_case_variant}" ]]; then
@@ -90,7 +109,6 @@ ensure_llm_file() {
     return 0
   fi
 
-  # Диагностика: возможно, в upstream имя отличается только регистром.
   existing_case_variant="$(find "${target_dir}" -maxdepth 1 -type f -iname "${required_file}" -print -quit)"
   if [[ -n "${existing_case_variant}" ]]; then
     cp "${existing_case_variant}" "${target_path}"
@@ -126,30 +144,30 @@ ensure_ocr_models() {
   fi
 
   echo "[INFO] Downloading PaddleOCR det/rec/cls..."
-  run_and_log curl -fL "https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_det_infer.tar" -o "${TMP_DIR}/det.tar"
-  run_and_log curl -fL "https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_rec_infer.tar" -o "${TMP_DIR}/rec.tar"
-  run_and_log curl -fL "https://paddleocr.bj.bcebos.com/dygraph_v2.0/ch/ch_ppocr_mobile_v2.0_cls_infer.tar" -o "${TMP_DIR}/cls.tar"
+  run_and_log curl -fL "${OCR_DET_URL}" -o "${TMP_DIR}/det.tar"
+  run_and_log curl -fL "${OCR_REC_URL}" -o "${TMP_DIR}/rec.tar"
+  run_and_log curl -fL "${OCR_CLS_URL}" -o "${TMP_DIR}/cls.tar"
 
   run_and_log tar -xf "${TMP_DIR}/det.tar" -C "${TMP_DIR}"
   run_and_log tar -xf "${TMP_DIR}/rec.tar" -C "${TMP_DIR}"
   run_and_log tar -xf "${TMP_DIR}/cls.tar" -C "${TMP_DIR}"
 
-  run_and_log cp "${TMP_DIR}/ch_PP-OCRv4_det_infer/inference.pdmodel" "${MODELS_DIR}/ocr/det/"
-  run_and_log cp "${TMP_DIR}/ch_PP-OCRv4_det_infer/inference.pdiparams" "${MODELS_DIR}/ocr/det/"
-  run_and_log cp "${TMP_DIR}/ch_PP-OCRv4_rec_infer/inference.pdmodel" "${MODELS_DIR}/ocr/rec/"
-  run_and_log cp "${TMP_DIR}/ch_PP-OCRv4_rec_infer/inference.pdiparams" "${MODELS_DIR}/ocr/rec/"
-  run_and_log cp "${TMP_DIR}/ch_ppocr_mobile_v2.0_cls_infer/inference.pdmodel" "${MODELS_DIR}/ocr/cls/"
-  run_and_log cp "${TMP_DIR}/ch_ppocr_mobile_v2.0_cls_infer/inference.pdiparams" "${MODELS_DIR}/ocr/cls/"
+  run_and_log cp "${TMP_DIR}/ch_PP-OCRv4_det_infer/inference.pdmodel" "${ocr_root}/det/"
+  run_and_log cp "${TMP_DIR}/ch_PP-OCRv4_det_infer/inference.pdiparams" "${ocr_root}/det/"
+  run_and_log cp "${TMP_DIR}/ch_PP-OCRv4_rec_infer/inference.pdmodel" "${ocr_root}/rec/"
+  run_and_log cp "${TMP_DIR}/ch_PP-OCRv4_rec_infer/inference.pdiparams" "${ocr_root}/rec/"
+  run_and_log cp "${TMP_DIR}/ch_ppocr_mobile_v2.0_cls_infer/inference.pdmodel" "${ocr_root}/cls/"
+  run_and_log cp "${TMP_DIR}/ch_ppocr_mobile_v2.0_cls_infer/inference.pdiparams" "${ocr_root}/cls/"
 }
 
 echo "[INFO] Downloading Hugging Face models..."
-ensure_llm_file "${LLM_HF_REPO}" "${MODELS_DIR}/llm" "${LLM_MODEL_FILE}"
-ensure_hf_repo_snapshot "Qwen/Qwen3-VL-2B-Instruct" "${MODELS_DIR}/vision/qwen3-vl-2b-instruct" "config.json"
-ensure_hf_repo_snapshot "BAAI/bge-m3" "${MODELS_DIR}/embeddings/bge-m3" "config.json"
-ensure_hf_repo_snapshot "BAAI/bge-reranker-v2-m3" "${MODELS_DIR}/reranker/bge-reranker-v2-m3" "config.json"
+ensure_llm_file "${LLM_HF_REPO}" "${LLM_MODEL_DIR}" "${LLM_MODEL_FILE}"
+ensure_hf_repo_snapshot "${VISION_HF_REPO}" "${VISION_MODEL_DIR}" "config.json"
+ensure_hf_repo_snapshot "${EMBEDDING_HF_REPO}" "${EMBEDDING_MODEL_DIR}" "config.json"
+ensure_hf_repo_snapshot "${RERANKER_HF_REPO}" "${RERANKER_MODEL_DIR}" "config.json"
 
-ensure_ocr_models "${MODELS_DIR}/ocr"
+ensure_ocr_models "${OCR_MODEL_ROOT_DIR}"
 
 echo "[INFO] Model download complete."
-echo "[INFO] LLM path: ${MODELS_DIR}/llm/${LLM_MODEL_FILE}"
+echo "[INFO] LLM path: ${LLM_MODEL_DIR}/${LLM_MODEL_FILE}"
 echo "[INFO] Next step: ./scripts/preflight_check.sh --mode offline --check-ocr-stack"
