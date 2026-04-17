@@ -23,6 +23,7 @@
 - `ingest/*`: ingestion pipelines A/B и парсинг документов.
 - `storage/*`: доступ к Qdrant/PostgreSQL.
 - `vision/service.py`: OCR + visual analysis для вложений пользователя.
+- `vision/service.py`: переключаемые режимы `ocr|vlm` отдельно для runtime и ingest.
 - `telemetry/metrics.py`: метрики Prometheus.
 
 ## 4) Разделение корпусов

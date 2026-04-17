@@ -108,12 +108,25 @@ RERANKER_DEVICE=cuda
 # New multimodal settings
 VISION_ENABLED=true
 VISION_INGEST_ENABLED=true
+VISION_RUNTIME_MODE=ocr
+VISION_INGEST_MODE=ocr
 VISION_OCR_MODEL_ROOT=/models/ocr
 VISION_OCR_LANG=ru
 VISION_OCR_DEVICE=auto
 VISION_OCR_USE_ANGLE_CLS=true
 VISION_OCR_SHOW_LOG=false
+VISION_MODEL_PATH=/models/vision/qwen3-vl-2b-instruct
+VISION_MODEL_DEVICE=auto
+VISION_MODEL_DTYPE=auto
+VISION_MODEL_MAX_NEW_TOKENS=160
+VISION_MODEL_PROMPT_RUNTIME=Опиши скриншот пользователя для службы поддержки. Если видны ошибки/коды/статусы — укажи их.
+VISION_MODEL_PROMPT_INGEST=Кратко опиши изображение для индексации документации. Укажи важные надписи, элементы интерфейса и возможные коды ошибок.
 ```
+
+Режимы:
+- `VISION_RUNTIME_MODE=ocr|vlm` — как анализировать вложения пользователя.
+- `VISION_INGEST_MODE=ocr|vlm` — как анализировать изображения, извлечённые из DOCX/PDF.
+- По умолчанию оба режима — `ocr` (обратная совместимость).
 
 ## 7) Что проверить перед запуском
 1. Все model-директории существуют и смонтированы в контейнеры.
@@ -218,6 +231,14 @@ python3 scripts/run_vision_regression.py --help
 python3 scripts/run_vision_regression.py --marker-token ERR-9A7K-UNIQUE
 python3 scripts/run_vision_regression.py --prefer-docker-for-assets
 ```
+
+Дополнительный скрипт проверки VLM:
+```bash
+python3 scripts/run_vlm_recognition_checks.py --work-dir data/vision_vlm_checks --keep-assets
+```
+Скрипт валидирует:
+- runtime-обработку изображений форматов `png/jpeg/bmp/tiff`;
+- ingest-ветку (извлечение изображений из PDF/DOCX + генерация image-derived чанков в VLM-режиме).
 
 ## 10) Типовые проблемы
 - `vision_ocr_init_failed`: не найдены OCR-модели в `VISION_OCR_MODEL_ROOT`.

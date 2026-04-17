@@ -10,10 +10,16 @@ from src.core.settings import settings
 
 logger = logging.getLogger(__name__)
 _OCR_UNSUPPORTED_IMAGE_EXTENSIONS = {'.jb2', '.jbig2'}
+_VISION_MODES = {'ocr', 'vlm'}
+_VLM_SUPPORTED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}
 
 
 class VisionService:
     _ocr_client = None
+    _vlm_processor = None
+    _vlm_model = None
+    _vlm_device = 'cpu'
+    _vlm_init_failed = False
 
     @staticmethod
     def _build_paddle_ocr(*, model_root: str | None):
@@ -64,16 +70,20 @@ class VisionService:
             logger.info('vision_disabled')
             return []
 
+        runtime_mode = self._resolve_mode(for_ingest=False)
         started = time.perf_counter()
         items = list(attachments)
-        logger.info('vision_request_received', extra={'images': len(items), 'question_length': len(question)})
+        logger.info(
+            'vision_request_received',
+            extra={'images': len(items), 'question_length': len(question), 'mode': runtime_mode},
+        )
 
         evidence: list[VisionEvidenceItem] = []
         for attachment in items:
             image_path = attachment.image_path.strip()
             if not image_path:
                 continue
-            evidence.append(self._analyze_single_image(image_path))
+            evidence.append(self._analyze_single_image(image_path, question=question, mode=runtime_mode))
 
         logger.info(
             'vision_request_finished',
@@ -89,14 +99,20 @@ class VisionService:
             )
             return []
 
+        ingest_mode = self._resolve_mode(for_ingest=True)
         chunks: list[dict] = []
         for idx, item in enumerate(image_assets):
             image_path = str(item.get('path', '')).strip()
             if not image_path:
                 continue
-            ocr_text = self._run_ocr(image_path)
-            summary = self._build_summary(image_path, ocr_text)
-            text = f"[IMAGE] {summary}\nOCR:\n{ocr_text}".strip()
+            extracted_text = self._extract_image_text_or_caption(
+                image_path,
+                question=settings.vision_model_prompt_ingest,
+                mode=ingest_mode,
+            )
+            summary = self._build_summary(image_path, extracted_text, mode=ingest_mode)
+            body_label = 'OCR' if ingest_mode == 'ocr' else 'VLM'
+            text = f"[IMAGE] {summary}\n{body_label}:\n{extracted_text}".strip()
             if len(text) < 20:
                 continue
 
@@ -112,18 +128,20 @@ class VisionService:
             )
         return chunks
 
-    def _analyze_single_image(self, image_path: str) -> VisionEvidenceItem:
+    def _analyze_single_image(self, image_path: str, *, question: str, mode: str) -> VisionEvidenceItem:
         started = time.perf_counter()
-        ocr_text = self._run_ocr(image_path)
-        summary = self._build_summary(image_path, ocr_text)
-        confidence = self._estimate_confidence(ocr_text)
+        extracted_text = self._extract_image_text_or_caption(image_path, question=question, mode=mode)
+        summary = self._build_summary(image_path, extracted_text, mode=mode)
+        confidence = self._estimate_confidence(extracted_text)
+        ocr_text = extracted_text if mode == 'ocr' else ''
 
         logger.info(
             'vision_image_processed',
             extra={
                 'image_path': image_path,
-                'ocr_text_length': len(ocr_text),
+                'extracted_text_length': len(extracted_text),
                 'confidence': confidence,
+                'mode': mode,
                 'duration_sec': round(time.perf_counter() - started, 3),
             },
         )
@@ -134,6 +152,23 @@ class VisionService:
             summary=summary,
             confidence=confidence,
         )
+
+    @staticmethod
+    def _resolve_mode(*, for_ingest: bool) -> str:
+        raw_mode = settings.vision_ingest_mode if for_ingest else settings.vision_runtime_mode
+        mode = str(raw_mode).strip().lower()
+        if mode not in _VISION_MODES:
+            logger.warning(
+                'vision_mode_unsupported',
+                extra={'raw_mode': raw_mode, 'allowed_modes': sorted(_VISION_MODES), 'fallback_mode': 'ocr'},
+            )
+            return 'ocr'
+        return mode
+
+    def _extract_image_text_or_caption(self, image_path: str, *, question: str, mode: str) -> str:
+        if mode == 'vlm':
+            return self._run_vlm(image_path, question=question)
+        return self._run_ocr(image_path)
 
     @classmethod
     def _get_ocr_client(cls):
@@ -237,9 +272,125 @@ class VisionService:
 
         return ''
 
+    @classmethod
+    def _get_vlm_client(cls):
+        if cls._vlm_init_failed:
+            return None
+        if cls._vlm_processor is not None and cls._vlm_model is not None:
+            return cls._vlm_processor, cls._vlm_model, cls._vlm_device
+
+        model_path = settings.vision_model_path
+        if not Path(model_path).exists():
+            logger.error('vision_vlm_model_path_missing', extra={'model_path': model_path})
+            cls._vlm_init_failed = True
+            return None
+        try:
+            import torch
+            from transformers import AutoModelForVision2Seq, AutoProcessor
+
+            processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True, local_files_only=True)
+            torch_device = cls._resolve_vlm_device(torch)
+            torch_dtype = cls._resolve_vlm_dtype(torch)
+
+            model = AutoModelForVision2Seq.from_pretrained(
+                model_path,
+                trust_remote_code=True,
+                local_files_only=True,
+                torch_dtype=torch_dtype,
+                device_map='auto' if torch_device == 'cuda' else None,
+            )
+            if torch_device == 'cpu':
+                model = model.to('cpu')
+            model.eval()
+
+            cls._vlm_processor = processor
+            cls._vlm_model = model
+            cls._vlm_device = torch_device
+            cls._vlm_init_failed = False
+            logger.info(
+                'vision_vlm_initialized',
+                extra={'model_path': model_path, 'device': torch_device, 'dtype': settings.vision_model_dtype},
+            )
+            return cls._vlm_processor, cls._vlm_model, cls._vlm_device
+        except Exception:
+            logger.exception('vision_vlm_init_failed', extra={'model_path': model_path})
+            cls._vlm_init_failed = True
+            return None
+
     @staticmethod
-    def _build_summary(image_path: str, ocr_text: str) -> str:
-        lowered = ocr_text.lower()
+    def _resolve_vlm_device(torch_module) -> str:
+        preferred = settings.vision_model_device.strip().lower()
+        if preferred not in {'auto', 'cpu', 'cuda'}:
+            logger.warning('vision_vlm_invalid_device', extra={'value': settings.vision_model_device, 'fallback': 'auto'})
+            preferred = 'auto'
+        if preferred == 'cpu':
+            return 'cpu'
+        if preferred == 'cuda':
+            if not torch_module.cuda.is_available():
+                raise RuntimeError('VISION_MODEL_DEVICE=cuda, но CUDA недоступна')
+            return 'cuda'
+        return 'cuda' if torch_module.cuda.is_available() else 'cpu'
+
+    @staticmethod
+    def _resolve_vlm_dtype(torch_module):
+        preferred = settings.vision_model_dtype.strip().lower()
+        if preferred == 'float32':
+            return torch_module.float32
+        if preferred == 'float16':
+            return torch_module.float16
+        if preferred == 'bfloat16':
+            return torch_module.bfloat16
+        return torch_module.float16 if torch_module.cuda.is_available() else torch_module.float32
+
+    def _run_vlm(self, image_path: str, *, question: str) -> str:
+        if not os.path.exists(image_path):
+            logger.warning('vision_image_not_found', extra={'image_path': image_path})
+            return ''
+
+        suffix = Path(image_path).suffix.lower()
+        if suffix not in _VLM_SUPPORTED_IMAGE_EXTENSIONS:
+            logger.warning(
+                'vision_vlm_skipped_unsupported_ext',
+                extra={'image_path': image_path, 'supported': sorted(_VLM_SUPPORTED_IMAGE_EXTENSIONS)},
+            )
+            return ''
+
+        client = self._get_vlm_client()
+        if client is None:
+            return ''
+
+        processor, model, device = client
+        prompt = question.strip() or settings.vision_model_prompt_runtime
+
+        try:
+            import torch
+            from PIL import Image
+
+            image = Image.open(image_path).convert('RGB')
+
+            if hasattr(processor, 'apply_chat_template'):
+                messages = [{'role': 'user', 'content': [{'type': 'image'}, {'type': 'text', 'text': prompt}]}]
+                text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            else:
+                text = prompt
+
+            inputs = processor(text=[text], images=[image], return_tensors='pt', padding=True)
+            if device == 'cuda':
+                inputs = {k: (v.to('cuda') if hasattr(v, 'to') else v) for k, v in inputs.items()}
+            with torch.no_grad():
+                generated = model.generate(**inputs, max_new_tokens=settings.vision_model_max_new_tokens)
+            output = processor.batch_decode(generated, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+            result = (output[0] if output else '').strip()
+            if result.startswith(text):
+                result = result[len(text):].strip()
+            return result
+        except Exception:
+            logger.exception('vision_vlm_inference_failed', extra={'image_path': image_path})
+            return ''
+
+    @staticmethod
+    def _build_summary(image_path: str, extracted_text: str, *, mode: str) -> str:
+        lowered = extracted_text.lower()
         hints: list[str] = []
 
         if re.search(r'\b(error|exception|traceback|critical|failed)\b', lowered):
@@ -252,7 +403,8 @@ class VisionService:
             hints.append('Скриншот обработан, явных сигнатур критической ошибки не найдено')
 
         file_hint = Path(image_path).name
-        return f"{'; '.join(hints)}. Файл: {file_hint}"
+        mode_hint = 'OCR' if mode == 'ocr' else 'VLM'
+        return f"{'; '.join(hints)}. Метод: {mode_hint}. Файл: {file_hint}"
 
     @staticmethod
     def _estimate_confidence(ocr_text: str) -> float:

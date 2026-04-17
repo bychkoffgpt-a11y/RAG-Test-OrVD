@@ -22,11 +22,25 @@ class Settings(BaseSettings):
 
     vision_enabled: bool = True
     vision_ingest_enabled: bool = True
+    vision_runtime_mode: str = 'ocr'
+    vision_ingest_mode: str = 'ocr'
     vision_ocr_model_root: str = '/models/ocr'
     vision_ocr_lang: str = 'ru'
     vision_ocr_device: str = 'auto'
     vision_ocr_use_angle_cls: bool = True
     vision_ocr_show_log: bool = False
+    vision_model_path: str = '/models/vision/qwen3-vl-2b-instruct'
+    vision_model_device: str = 'auto'
+    vision_model_dtype: str = 'auto'
+    vision_model_max_new_tokens: int = 160
+    vision_model_prompt_runtime: str = (
+        'Опиши скриншот пользователя для службы поддержки. '
+        'Если видны ошибки/коды/статусы — укажи их.'
+    )
+    vision_model_prompt_ingest: str = (
+        'Кратко опиши изображение для индексации документации. '
+        'Укажи важные надписи, элементы интерфейса и возможные коды ошибок.'
+    )
     chunk_size_csv_ans_docs: int = 1100
     chunk_overlap_csv_ans_docs: int = 150
     chunk_strategy_csv_ans_docs: str = 'docs'
