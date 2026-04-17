@@ -115,33 +115,23 @@ docker compose up -d
 ./scripts/update_wheels.sh --mode refresh
 ```
 
-### Базовые образы для тяжёлого dependency-слоя (`support-api`, `ingest-a`, `ingest-b`)
-Тяжёлые шаги установки зависимостей вынесены в отдельные базовые образы:
-- `app/Dockerfile.support-api-base` → для `support-api`;
-- `app/Dockerfile.ingest-base` → для `ingest-a` и `ingest-b`.
+### Сборка `support-api` без внешнего base image
+`support-api` собирается напрямую из `app/Dockerfile.support-api` (без `ghcr.io/csv-ans/rag-support-api-base:*`).
+Поддерживаются два сценария пересборки:
 
-Сервисные образы собираются тонким слоем поверх published base:
-- `app/Dockerfile.support-api` использует `FROM ${SUPPORT_API_BASE_IMAGE_REPO}:${SUPPORT_API_DEPS_TAG}`;
-- `app/Dockerfile.ingest-a` и `app/Dockerfile.ingest-b` используют `FROM ${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}`.
+1. **Полная online-пересборка** (ставит зависимости из индексов):
+   ```bash
+   ./scripts/update_app.sh --mode online --build
+   ```
+2. **Пересборка через локальный wheelhouse** (`app/wheels`):
+   ```bash
+   ./scripts/update_wheels.sh --mode refresh --strict
+   ./scripts/update_app.sh --mode offline --build
+   ```
 
-Рекомендуемый процесс:
-1. При изменении зависимостей собрать/опубликовать базовые образы:
-   - `./scripts/build_support_api_base.sh`
-   - `./scripts/build_ingest_base.sh`
-2. Для публикации использовать `PUSH_IMAGE=1`.
-3. Зафиксировать новые теги `SUPPORT_API_DEPS_TAG` и `INGEST_DEPS_TAG` в `.env`/CI.
-4. При неизменных зависимостях не обновлять base image: `docker compose build support-api ingest-a ingest-b` пересоберёт только тонкие сервисные слои.
+Если в `pyproject.toml` появились новые зависимости, сначала дозаполните wheelhouse (например, `--mode append`), затем повторите пересборку `support-api`.
 
-Для онлайн-сборки можно переопределить primary/mirror индекс Python-пакетов через build args:
-```bash
-docker compose build \
-  --build-arg PIP_INDEX_URL=https://pypi.org/simple \
-  --build-arg PIP_FALLBACK_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-  --build-arg DEBIAN_MIRROR=https://mirror.yandex.ru/debian \
-  --build-arg DEBIAN_SECURITY_MIRROR=https://mirror.yandex.ru/debian-security \
-  --build-arg PIP_EXTRA_INDEX_URL= \
-  --build-arg PIP_TRUSTED_HOST=
-```
+Для `ingest-a`/`ingest-b` по-прежнему используется published base image `${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}`.
 
 ### Troubleshooting: `403 Forbidden` при pull `ghcr.io/csv-ans/rag-ingest-base:*`
 Если при `docker compose build ingest-a`/`ingest-b` возникает ошибка вида:
