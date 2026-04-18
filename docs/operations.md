@@ -209,6 +209,8 @@ docker compose up -d --build
 ./scripts/update_app.sh --mode online --online-strict-wheels
 ```
 
+`scripts/update_wheels.sh` синхронизирует не только зависимости из `pyproject.toml`, но и pinned docker-only пакет для ingest-base (`opencv-contrib-python-headless==4.10.0.84`), чтобы `ingest-*` не уходил в online-индекс при полном wheelhouse.
+
 ## Устойчивость сборки Python-зависимостей и офлайн-режим
 
 ### Вариант 1 — онлайн-сборка (по умолчанию)
@@ -229,6 +231,13 @@ docker compose up -d --build
     --build-arg PIP_EXTRA_INDEX_URL= \
     --build-arg PIP_TRUSTED_HOST=
   ```
+
+Для локальной сборки ingest-base через скрипт доступны те же индексы/зеркала:
+```bash
+PIP_INDEX_URL=https://pypi.org/simple \
+PIP_FALLBACK_INDEX_URL=https://<your-mirror>/simple \
+./scripts/build_ingest_base.sh
+```
 
 ### Вариант 2 — полностью офлайн (рекомендуется для закрытого контура)
 1. На машине с интернетом подготовить wheelhouse:
