@@ -160,7 +160,16 @@ log "Извлекаю список зависимостей из $PYPROJECT_FILE
 run_step "Извлечение зависимостей из pyproject.toml" python3 - "$PYPROJECT_FILE" "$req_file" "$INCLUDE_DEV" <<'PY'
 import pathlib
 import sys
-import tomllib
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:  # pragma: no cover
+    try:
+        import tomli as tomllib  # type: ignore
+    except ModuleNotFoundError as exc:  # pragma: no cover
+        raise SystemExit(
+            "Для чтения pyproject.toml нужен модуль tomllib (Python 3.11+) "
+            "или установленный пакет tomli для Python 3.10."
+        ) from exc
 
 pyproject_path = pathlib.Path(sys.argv[1])
 out_path = pathlib.Path(sys.argv[2])
@@ -169,10 +178,72 @@ with pyproject_path.open('rb') as fh:
     data = tomllib.load(fh)
 
 requirements = []
-requirements.extend(data.get('project', {}).get('dependencies', []))
-requirements.extend(data.get('build-system', {}).get('requires', []))
-if include_dev:
-    requirements.extend(data.get('project', {}).get('optional-dependencies', {}).get('dev', []))
+
+
+def extend_if_strings(values):
+    for value in values or []:
+        if isinstance(value, str) and value.strip():
+            requirements.append(value.strip())
+
+
+def collect_project_dependencies():
+    project = data.get("project", {})
+    extend_if_strings(project.get("dependencies", []))
+    if include_dev:
+        optional = project.get("optional-dependencies", {})
+        extend_if_strings(optional.get("dev", []))
+
+
+def collect_dependency_groups():
+    if not include_dev:
+        return
+    groups = data.get("dependency-groups", {})
+    dev_group = groups.get("dev", [])
+    for item in dev_group:
+        if isinstance(item, str) and item.strip():
+            requirements.append(item.strip())
+        elif isinstance(item, dict):
+            # Поддержка include-group (PEP 735), например { include-group = "lint" }.
+            include_group = item.get("include-group")
+            if not include_group:
+                continue
+            nested = groups.get(include_group, [])
+            for nested_item in nested:
+                if isinstance(nested_item, str) and nested_item.strip():
+                    requirements.append(nested_item.strip())
+
+
+def collect_poetry_dependencies():
+    poetry = data.get("tool", {}).get("poetry", {})
+    poetry_deps = poetry.get("dependencies", {})
+    for name, spec in poetry_deps.items():
+        if name.lower() == "python":
+            continue
+        if isinstance(spec, str):
+            requirements.append(f"{name}{spec if spec.startswith(('=', '<', '>', '!', '~')) else f'=={spec}'}")
+        elif isinstance(spec, dict):
+            version = spec.get("version")
+            if isinstance(version, str) and version.strip():
+                requirements.append(f"{name}{version if version.startswith(('=', '<', '>', '!', '~')) else f'=={version}'}")
+            else:
+                requirements.append(name)
+    if include_dev:
+        dev_group = poetry.get("group", {}).get("dev", {}).get("dependencies", {})
+        for name, spec in dev_group.items():
+            if isinstance(spec, str):
+                requirements.append(f"{name}{spec if spec.startswith(('=', '<', '>', '!', '~')) else f'=={spec}'}")
+            elif isinstance(spec, dict):
+                version = spec.get("version")
+                if isinstance(version, str) and version.strip():
+                    requirements.append(f"{name}{version if version.startswith(('=', '<', '>', '!', '~')) else f'=={version}'}")
+                else:
+                    requirements.append(name)
+
+
+collect_project_dependencies()
+collect_dependency_groups()
+collect_poetry_dependencies()
+extend_if_strings(data.get("build-system", {}).get("requires", []))
 
 seen = set()
 ordered_unique = []
@@ -190,6 +261,9 @@ if [[ "$INCLUDE_DEV" -eq 1 ]]; then
   dev_suffix=" +dev"
 fi
 log "Найдено зависимостей (прямые + build-system${dev_suffix}): ${deps_count}"
+if [[ "$deps_count" -eq 0 ]]; then
+  fail "Не удалось извлечь зависимости из pyproject.toml (получено 0 записей). Проверьте формат секций [project.dependencies]/[dependency-groups]/[tool.poetry.dependencies]."
+fi
 log "Список зависимостей для проверки wheelhouse:"
 nl -ba "$req_file" | sed 's/^/[REQ] /'
 
