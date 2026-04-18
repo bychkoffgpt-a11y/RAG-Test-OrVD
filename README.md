@@ -185,7 +185,18 @@ python3 scripts/run_vision_regression.py --api-url http://localhost:8000
 python3 scripts/run_vision_regression.py --help
 python3 scripts/run_vision_regression.py --marker-token ERR-9A7K-UNIQUE
 python3 scripts/run_vision_regression.py --prefer-docker-for-assets
+python3 scripts/run_vision_regression.py --expected-runtime-mode ocr --expected-ingest-mode ocr
+python3 scripts/run_vision_regression.py --expected-runtime-mode vlm --expected-ingest-mode vlm
+python3 scripts/run_vision_regression.py --expected-runtime-mode vlm --expected-ingest-mode vlm --debug-tc4-soft
 ```
+
+Примечания по режимам:
+- `TC-02` зависит от `--expected-runtime-mode`:
+  - `ocr`: строгая проверка по `visual_evidence[].ocr_text` (ожидается код ошибки, например `500`);
+  - `vlm`: допускается пустой `ocr_text`, проверяется содержательный `summary`.
+- `TC-04` зависит от `--expected-ingest-mode`:
+  - `ocr`: strict retrieval маркерного документа (`vision_regression_marker`);
+  - `vlm`: semantic retrieval (ослабленная проверка, без обязательного exact-token).
 
 ## Проверка корректности распознавания через VLM
 Добавлен отдельный smoke-скрипт `scripts/run_vlm_recognition_checks.py`, который:
