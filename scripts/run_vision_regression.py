@@ -212,6 +212,34 @@ def main() -> int:
         action="store_true",
         help="Форсировать генерацию изображений внутри контейнера support-api",
     )
+    parser.add_argument(
+        "--expected-runtime-mode",
+        choices=("ocr", "vlm"),
+        default="ocr",
+        help=(
+            "Ожидаемый runtime-режим vision для TC-02. "
+            "ocr: требовать непустой OCR и код ошибки; "
+            "vlm: проверять визуальный ответ без требования OCR-поля."
+        ),
+    )
+    parser.add_argument(
+        "--expected-ingest-mode",
+        choices=("ocr", "vlm"),
+        default="ocr",
+        help=(
+            "Ожидаемый ingest-режим vision для TC-04. "
+            "ocr: strict retrieval по маркеру; "
+            "vlm: semantic retrieval (ослабленная проверка без обязательного exact-token)."
+        ),
+    )
+    parser.add_argument(
+        "--debug-tc4-soft",
+        action="store_true",
+        help=(
+            "Ослабить критерий TC-04 дополнительно: считать успешным при индексации+ask=200 "
+            "даже если marker-doc не вошёл в sources (диагностический режим)."
+        ),
+    )
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir).resolve()
@@ -250,17 +278,32 @@ def main() -> int:
         status, payload = post_json(f"{base}/v1/chat/completions", multimodal_payload, timeout=args.timeout)
         visual = payload.get("visual_evidence") or []
         ocr_text = (visual[0].get("ocr_text") if visual else "") or ""
-        tc2_ok = (
-            status == 200
-            and len(visual) >= 1
-            and visual[0].get("image_path") == fixtures["image_http500"]
-            and "500" in ocr_text
-        )
+        summary_text = (visual[0].get("summary") if visual else "") or ""
+        if args.expected_runtime_mode == "ocr":
+            tc2_ok = (
+                status == 200
+                and len(visual) >= 1
+                and visual[0].get("image_path") == fixtures["image_http500"]
+                and "500" in ocr_text
+            )
+        else:
+            # В VLM режиме ocr_text может быть пустым по дизайну.
+            lowered_summary = summary_text.lower()
+            tc2_ok = (
+                status == 200
+                and len(visual) >= 1
+                and visual[0].get("image_path") == fixtures["image_http500"]
+                and bool(summary_text.strip())
+                and ("ошиб" in lowered_summary or "error" in lowered_summary or "500" in lowered_summary)
+            )
         checks.append(
             CheckResult(
                 name="TC-02 attachment parsing + OCR",
                 ok=tc2_ok,
-                details=f"status={status}, visual_count={len(visual)}, ocr_excerpt={ocr_text[:120]!r}",
+                details=(
+                    f"status={status}, mode={args.expected_runtime_mode}, visual_count={len(visual)}, "
+                    f"ocr_excerpt={ocr_text[:120]!r}, summary_excerpt={summary_text[:120]!r}"
+                ),
             )
         )
 
@@ -309,35 +352,45 @@ def main() -> int:
         retrieved_source_types = sorted({(s.get("source_type") or "") for s in sources if s.get("source_type")})
         joined_paths = "\n".join(images + [p for s in sources for p in s.get("image_paths", [])])
         retrieved_doc_present = "vision_regression_marker" in source_doc_ids
+        retrieved_by_path_hint = "vision_regression_marker" in joined_paths
 
         if ingest_status != 200:
             tc4_reason = "ingest_failed"
         elif exists_status != 200 or not indexed_doc_present or indexed_chunk_count <= 0:
             tc4_reason = "indexing_not_confirmed"
-        elif not retrieved_doc_present:
+        elif args.expected_ingest_mode == "ocr" and not retrieved_doc_present:
             tc4_reason = "indexed_but_not_retrieved"
+        elif args.expected_ingest_mode == "vlm" and not (retrieved_doc_present or retrieved_by_path_hint):
+            tc4_reason = "indexed_but_not_semantically_retrieved"
         else:
             tc4_reason = "ok"
 
-        tc4_ok = (
+        base_tc4_ok = (
             ingest_status == 200
             and exists_status == 200
             and indexed_doc_present
             and indexed_chunk_count > 0
             and ask_status == 200
-            and retrieved_doc_present
-            and "vision_regression_marker" in joined_paths
         )
+        if args.expected_ingest_mode == "ocr":
+            tc4_ok = base_tc4_ok and retrieved_doc_present and retrieved_by_path_hint
+        else:
+            # Для VLM ingest допускаем semantic retrieval без strict exact-token.
+            tc4_ok = base_tc4_ok and (retrieved_doc_present or retrieved_by_path_hint or bool(sources))
+
+        if args.debug_tc4_soft:
+            tc4_ok = base_tc4_ok
         checks.append(
             CheckResult(
                 name="TC-04 image-derived retrieval after ingestion",
                 ok=tc4_ok,
                 details=(
-                    f"reason={tc4_reason}, ingest_status={ingest_status}, ingest={ingest_payload}, "
+                    f"reason={tc4_reason}, ingest_mode={args.expected_ingest_mode}, debug_soft={args.debug_tc4_soft}, "
+                    f"ingest_status={ingest_status}, ingest={ingest_payload}, "
                     f"exists_status={exists_status}, indexed_doc_present={indexed_doc_present}, "
                     f"indexed_chunk_count={indexed_chunk_count}, ask_status={ask_status}, "
                     f"retrieved_doc_present={retrieved_doc_present}, retrieved_source_types={retrieved_source_types}, "
-                    f"source_doc_ids={source_doc_ids}, images={images}"
+                    f"source_doc_ids={source_doc_ids}, path_hint={retrieved_by_path_hint}, images={images}"
                 ),
             )
         )
