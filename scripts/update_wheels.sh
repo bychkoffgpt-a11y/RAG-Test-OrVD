@@ -57,11 +57,23 @@ run_step() {
 
   local started_at
   started_at="$(date +%s)"
+  local stdin_tmp=""
   echo
   echo "[STEP] ${title}"
   echo "[STEP] Команда: $*"
 
-  "$@" &
+  # Если команда передана с heredoc (stdin не tty), сохраняем stdin во временный файл.
+  # Иначе при фоне ("&") bash может подменить stdin на /dev/null.
+  if [[ ! -t 0 ]]; then
+    stdin_tmp="$(mktemp)"
+    cat >"$stdin_tmp"
+  fi
+
+  if [[ -n "$stdin_tmp" ]]; then
+    "$@" <"$stdin_tmp" &
+  else
+    "$@" &
+  fi
   local cmd_pid=$!
 
   while kill -0 "$cmd_pid" 2>/dev/null; do
@@ -80,8 +92,10 @@ run_step() {
   printf "\r[TIMER] %-72s %s\n" "${title}" "$(format_duration "$elapsed_total")"
 
   if [[ "$status" -ne 0 ]]; then
+    [[ -n "$stdin_tmp" ]] && rm -f "$stdin_tmp"
     fail "Шаг завершился с ошибкой (${status}): ${title}"
   fi
+  [[ -n "$stdin_tmp" ]] && rm -f "$stdin_tmp"
   ok "Шаг завершён: ${title} ($(format_duration "$elapsed_total"))"
 }
 
