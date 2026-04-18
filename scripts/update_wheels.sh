@@ -10,6 +10,11 @@ INCLUDE_DEV=0
 STRICT=0
 PIP_RETRIES="${PIP_RETRIES:-12}"
 PIP_TIMEOUT="${PIP_TIMEOUT:-60}"
+# Дополнительные пакеты, которые ставятся в Dockerfile отдельными шагами
+# и должны быть синхронизированы с локальным wheelhouse.
+EXTRA_REQUIREMENTS=(
+  "opencv-contrib-python-headless==4.10.0.84"
+)
 
 usage() {
   cat <<'USAGE'
@@ -171,7 +176,7 @@ req_file="$(mktemp)"
 trap 'rm -f "$req_file"' EXIT
 
 log "Извлекаю список зависимостей из $PYPROJECT_FILE..."
-run_step "Извлечение зависимостей из pyproject.toml" python3 - "$PYPROJECT_FILE" "$req_file" "$INCLUDE_DEV" <<'PY'
+run_step "Извлечение зависимостей из pyproject.toml" python3 - "$PYPROJECT_FILE" "$req_file" "$INCLUDE_DEV" "${EXTRA_REQUIREMENTS[*]}" <<'PY'
 import pathlib
 import sys
 try:
@@ -188,6 +193,7 @@ except ModuleNotFoundError:  # pragma: no cover
 pyproject_path = pathlib.Path(sys.argv[1])
 out_path = pathlib.Path(sys.argv[2])
 include_dev = bool(int(sys.argv[3]))
+extra_requirements = [item.strip() for item in sys.argv[4].split() if item.strip()]
 with pyproject_path.open('rb') as fh:
     data = tomllib.load(fh)
 
@@ -265,6 +271,12 @@ for req in requirements:
     if req not in seen:
         ordered_unique.append(req)
         seen.add(req)
+
+# Добавляем pinned-зависимости из Dockerfile (если они ещё не входят в pyproject)
+for extra in extra_requirements:
+    if extra not in seen:
+        ordered_unique.append(extra)
+        seen.add(extra)
 
 out_path.write_text('\n'.join(ordered_unique) + '\n', encoding='utf-8')
 PY

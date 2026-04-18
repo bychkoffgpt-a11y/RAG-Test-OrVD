@@ -132,6 +132,12 @@ docker compose up -d
 Если в `pyproject.toml` появились новые зависимости, сначала дозаполните wheelhouse (например, `--mode append`), затем повторите пересборку `support-api`.
 
 Для `ingest-a`/`ingest-b` по-прежнему используется published base image `${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}`.
+Скрипт `scripts/build_ingest_base.sh` передаёт в Docker build индексы/зеркала через `PIP_INDEX_URL`, `PIP_FALLBACK_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_TRUSTED_HOST`.
+Если в вашем контуре бывают TLS-сбои к primary индексу, задайте отдельный `PIP_FALLBACK_INDEX_URL` (не равный primary), иначе реального fallback не будет.
+Для быстрого сценария «проверить зеркала → собрать ingest-base → пересобрать ingest-a/ingest-b» используйте:
+```bash
+./scripts/rebuild_ingest_with_mirrors.sh
+```
 
 ### Troubleshooting: `403 Forbidden` при pull `ghcr.io/csv-ans/rag-ingest-base:*`
 Если при `docker compose build ingest-a`/`ingest-b` возникает ошибка вида:
