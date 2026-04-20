@@ -134,6 +134,53 @@ docker compose up -d
 Для `ingest-a`/`ingest-b` по-прежнему используется published base image `${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}`.
 Скрипт `scripts/build_ingest_base.sh` передаёт в Docker build индексы/зеркала через `PIP_INDEX_URL`, `PIP_FALLBACK_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_TRUSTED_HOST`.
 Если в вашем контуре бывают TLS-сбои к primary индексу, задайте отдельный `PIP_FALLBACK_INDEX_URL` (не равный primary), иначе реального fallback не будет.
+Скрипт также автоматически подхватывает `.env` и, при `IMAGE_REPO=cr.yandex/...`, может выполнить `yc container registry configure-docker` (если `YC_DOCKER_AUTH=1` и установлен `yc` CLI).
+
+### Рекомендуемая `.env`-конфигурация для Yandex Container Registry (повторяемая сборка)
+```env
+# ingest base image location
+INGEST_BASE_IMAGE_REPO=cr.yandex/<registry_id>/rag-ingest-base
+INGEST_DEPS_TAG=dev
+
+# yandex registry auth helper (используется scripts/build_ingest_base.sh)
+YC_REGISTRY_ID=<registry_id>
+YC_DOCKER_AUTH=1
+
+# устойчивые pip-индексы для build_ingest_base/update_wheels
+PIP_INDEX_URL=https://pypi.org/simple
+PIP_FALLBACK_INDEX_URL=https://mirror.yandex.ru/mirrors/pypi/simple
+PIP_EXTRA_INDEX_URL=
+PIP_TRUSTED_HOST=
+PIP_MODE=auto
+PIP_ONLINE_FALLBACK=1
+
+# целевые wheel-параметры для offline сборки ingest-base
+TARGET_PLATFORM=manylinux2014_x86_64
+TARGET_PYTHON_VERSION=311
+TARGET_IMPLEMENTATION=cp
+TARGET_ABI=cp311
+```
+
+### Полный поток воспроизводимой сборки ingest-base (Yandex CR)
+1. Подготовьте авторизацию `yc` и docker helper:
+   ```bash
+   yc init
+   yc container registry configure-docker
+   ```
+2. Убедитесь, что `.env` заполнен (см. блок выше).
+3. Пересоберите wheelhouse под target Python/ABI:
+   ```bash
+   ./scripts/update_wheels.sh --mode refresh --strict
+   ```
+4. Соберите и опубликуйте ingest-base:
+   ```bash
+   IMAGE_REPO="${INGEST_BASE_IMAGE_REPO}" PUSH_IMAGE=1 PIP_MODE=offline ./scripts/build_ingest_base.sh
+   ```
+5. Возьмите напечатанный `INGEST_DEPS_TAG=...` и сохраните в `.env`.
+6. Пересоберите ingest-сервисы:
+   ```bash
+   docker compose build --no-cache ingest-a ingest-b
+   ```
 
 ### Troubleshooting: `403 Forbidden` при pull `ghcr.io/csv-ans/rag-ingest-base:*`
 Если при `docker compose build ingest-a`/`ingest-b` возникает ошибка вида:

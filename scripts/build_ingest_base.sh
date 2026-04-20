@@ -40,7 +40,13 @@ done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="${ROOT_DIR}/app"
-IMAGE_REPO="${IMAGE_REPO:-ghcr.io/csv-ans/rag-ingest-base}"
+
+if [[ -f "${ROOT_DIR}/.env" ]]; then
+  # shellcheck disable=SC1091
+  set -a && . "${ROOT_DIR}/.env" && set +a
+fi
+
+IMAGE_REPO="${IMAGE_REPO:-${INGEST_BASE_IMAGE_REPO:-ghcr.io/csv-ans/rag-ingest-base}}"
 PUSH_IMAGE="${PUSH_IMAGE:-0}"
 
 PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"
@@ -51,6 +57,17 @@ PIP_MODE="${PIP_MODE:-auto}"
 PIP_ONLINE_FALLBACK="${PIP_ONLINE_FALLBACK:-1}"
 DEBIAN_MIRROR="${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}"
 DEBIAN_SECURITY_MIRROR="${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}"
+
+if [[ "${IMAGE_REPO}" == cr.yandex/* ]]; then
+  if command -v yc >/dev/null 2>&1; then
+    if [[ "${YC_DOCKER_AUTH:-1}" == "1" ]]; then
+      echo "[INFO] Configuring Docker auth for Yandex Container Registry via yc..."
+      yc container registry configure-docker >/dev/null
+    fi
+  else
+    echo "[WARN] yc CLI is not available. Ensure 'docker login' was done for cr.yandex."
+  fi
+fi
 
 if [[ ! -f "${APP_DIR}/pyproject.toml" ]]; then
   echo "[FAIL] pyproject.toml not found in ${APP_DIR}" >&2
