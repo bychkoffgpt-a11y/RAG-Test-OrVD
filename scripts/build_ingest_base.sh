@@ -11,7 +11,7 @@ Options:
   -h, --help   Show this help and exit
 
 Environment variables:
-  IMAGE_REPO                Target image repository (default: cr.yandex/<registry_id>/rag-ingest-base)
+  IMAGE_REPO                Target image repository (default: INGEST_BASE_IMAGE_REPO from .env)
   PUSH_IMAGE                Push image after build (0|1, default: 0)
   PIP_INDEX_URL             Primary Python index for docker build args
   PIP_FALLBACK_INDEX_URL    Fallback/mirror Python index for docker build args
@@ -46,8 +46,13 @@ if [[ -f "${ROOT_DIR}/.env" ]]; then
   set -a && . "${ROOT_DIR}/.env" && set +a
 fi
 
-IMAGE_REPO="${IMAGE_REPO:-${INGEST_BASE_IMAGE_REPO:-cr.yandex/<registry_id>/rag-ingest-base}}"
+IMAGE_REPO="${IMAGE_REPO:-${INGEST_BASE_IMAGE_REPO:-}}"
 PUSH_IMAGE="${PUSH_IMAGE:-0}"
+
+if [[ -z "${IMAGE_REPO}" ]]; then
+  echo "[FAIL] IMAGE_REPO is not set. Configure INGEST_BASE_IMAGE_REPO in .env or pass IMAGE_REPO=..." >&2
+  exit 1
+fi
 
 PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"
 PIP_FALLBACK_INDEX_URL="${PIP_FALLBACK_INDEX_URL:-}"

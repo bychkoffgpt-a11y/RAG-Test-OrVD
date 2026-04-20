@@ -201,7 +201,7 @@ services:
       cache_to:
         - type=local,dest=.docker-cache/ingest-a,mode=max
       args:
-        INGEST_BASE_IMAGE: ${INGEST_BASE_IMAGE_REPO:-cr.yandex/<registry_id>/rag-ingest-base}:${INGEST_DEPS_TAG:-dev}
+        INGEST_BASE_IMAGE: ${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}
     profiles: ["manual"]
     env_file: [.env]
     environment:
@@ -237,7 +237,7 @@ services:
       cache_to:
         - type=local,dest=.docker-cache/ingest-b,mode=max
       args:
-        INGEST_BASE_IMAGE: ${INGEST_BASE_IMAGE_REPO:-cr.yandex/<registry_id>/rag-ingest-base}:${INGEST_DEPS_TAG:-dev}
+        INGEST_BASE_IMAGE: ${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}
     profiles: ["manual"]
     env_file: [.env]
     environment:
