@@ -285,7 +285,7 @@ PIP_FALLBACK_INDEX_URL=https://<your-mirror>/simple \
 ```
 После этого повторите пересборку контейнера `support-api`.
 
-Для `ingest-a`/`ingest-b` сохраняется схема с базовым образом `${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}`. При ошибках pull GHCR (`403 Forbidden`) используйте `docker login ghcr.io` или локальную сборку `app/Dockerfile.ingest-base`.
+Для `ingest-a`/`ingest-b` сохраняется схема с базовым образом `${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}`. При ошибках pull Yandex Container Registry (`403 Forbidden`) выполните `yc container registry configure-docker` или используйте локальную сборку `app/Dockerfile.ingest-base`.
 
 ## Кэширование сборки Docker (BuildKit local cache)
 

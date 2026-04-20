@@ -182,17 +182,15 @@ TARGET_ABI=cp311
    docker compose build --no-cache ingest-a ingest-b
    ```
 
-### Troubleshooting: `403 Forbidden` при pull `ghcr.io/csv-ans/rag-ingest-base:*`
+### Troubleshooting: `403 Forbidden` при pull `cr.yandex/<registry_id>/rag-ingest-base:*`
 Если при `docker compose build ingest-a`/`ingest-b` возникает ошибка вида:
-`failed to fetch anonymous token ... ghcr.io ... 403 Forbidden`, это означает, что
-реестр GHCR не разрешает anonymous pull для указанного образа/тега.
+`failed to authorize ... cr.yandex ... 403 Forbidden`, это означает, что
+реестр Yandex Container Registry не разрешает pull для указанного образа/тега без авторизации.
 
 Рабочие варианты:
-1. Авторизоваться в GHCR и повторить сборку:
+1. Авторизоваться в Yandex CR и повторить сборку:
    ```bash
-   export GHCR_USER=<github_username>
-   export GHCR_TOKEN=<github_pat_with_read_packages>
-   echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+   yc container registry configure-docker
    docker compose build --no-cache ingest-b
    ```
 2. Если вы работаете полностью локально, собрать base image локально и использовать локальный repo/tag:
