@@ -5,6 +5,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="${ROOT_DIR}/app"
 PYPROJECT_FILE="${APP_DIR}/pyproject.toml"
 WHEELS_DIR="${APP_DIR}/wheels"
+
+if [[ -f "${ROOT_DIR}/.env" ]]; then
+  # shellcheck disable=SC1091
+  set -a && . "${ROOT_DIR}/.env" && set +a
+fi
+
 MODE="refresh"
 INCLUDE_DEV=0
 STRICT=0
