@@ -19,9 +19,11 @@ Environment variables:
   PIP_TRUSTED_HOST          Trusted host for pip (use only in controlled environments)
   PIP_MODE                  auto|offline|online (default: auto)
   PIP_ONLINE_FALLBACK       0|1 (default: 1)
+  FORCE_BUILDKIT            0|1 (default: 0; in offline mode BuildKit is disabled unless set to 1)
   DEBIAN_MIRROR             Debian mirror URL for apt
   DEBIAN_SECURITY_MIRROR    Debian security mirror URL for apt
   INGEST_OS_BASE_IMAGE      Prebuilt ingest OS base image reference
+  YC_DOCKER_AUTH            auto|0|1 (default: auto)
 USAGE
 }
 
@@ -61,15 +63,27 @@ PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL:-}"
 PIP_TRUSTED_HOST="${PIP_TRUSTED_HOST:-}"
 PIP_MODE="${PIP_MODE:-auto}"
 PIP_ONLINE_FALLBACK="${PIP_ONLINE_FALLBACK:-1}"
+FORCE_BUILDKIT="${FORCE_BUILDKIT:-0}"
 DEBIAN_MIRROR="${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}"
 DEBIAN_SECURITY_MIRROR="${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}"
 INGEST_OS_BASE_IMAGE="${INGEST_OS_BASE_IMAGE:-${INGEST_OS_BASE_IMAGE_REPO:-local/rag-ingest-os-base}:${INGEST_OS_TAG:-latest}}"
 
 if [[ "${IMAGE_REPO}" == cr.yandex/* ]]; then
+  YC_DOCKER_AUTH="${YC_DOCKER_AUTH:-auto}"
   if command -v yc >/dev/null 2>&1; then
-    if [[ "${YC_DOCKER_AUTH:-1}" == "1" ]]; then
+    should_configure_yc_auth=0
+    if [[ "${YC_DOCKER_AUTH}" == "1" ]]; then
+      should_configure_yc_auth=1
+    elif [[ "${YC_DOCKER_AUTH}" == "auto" && "${PUSH_IMAGE}" == "1" ]]; then
+      should_configure_yc_auth=1
+    fi
+    if [[ "${should_configure_yc_auth}" == "1" ]]; then
       echo "[INFO] Configuring Docker auth for Yandex Container Registry via yc..."
-      yc container registry configure-docker >/dev/null
+      if ! yc container registry configure-docker >/dev/null; then
+        echo "[WARN] yc configure-docker failed. Continue without modifying docker credentials."
+      fi
+    else
+      echo "[INFO] Skipping yc docker auth auto-config (YC_DOCKER_AUTH=${YC_DOCKER_AUTH}, PUSH_IMAGE=${PUSH_IMAGE})."
     fi
   else
     echo "[WARN] yc CLI is not available. Ensure 'docker login' was done for cr.yandex."
@@ -113,6 +127,25 @@ if [[ "${PIP_MODE}" == "offline" ]]; then
   if ! docker image inspect "${INGEST_OS_BASE_IMAGE}" >/dev/null 2>&1; then
     echo "[FAIL] PIP_MODE=offline requires prebuilt OS base image locally: ${INGEST_OS_BASE_IMAGE}" >&2
     exit 1
+  fi
+  if [[ "${FORCE_BUILDKIT}" != "1" ]]; then
+    export DOCKER_BUILDKIT=0
+    echo "[INFO] PIP_MODE=offline: forcing DOCKER_BUILDKIT=0 to avoid remote syntax frontend pull."
+  else
+    echo "[INFO] PIP_MODE=offline: FORCE_BUILDKIT=1, keeping BuildKit enabled."
+  fi
+fi
+
+if [[ "${DOCKER_BUILDKIT:-1}" != "0" ]]; then
+  if docker buildx version >/dev/null 2>&1; then
+    if ! docker buildx imagetools inspect docker/dockerfile:1.7 >/dev/null 2>&1; then
+      echo "[FAIL] BuildKit frontend preflight failed for docker/dockerfile:1.7." >&2
+      echo "[FAIL] Check Docker credentials/helper or network access to Docker Hub." >&2
+      echo "[FAIL] Hint: for offline builds run with PIP_MODE=offline (or DOCKER_BUILDKIT=0)." >&2
+      exit 1
+    fi
+  else
+    echo "[WARN] docker buildx is unavailable; skipping BuildKit frontend preflight."
   fi
 fi
 
