@@ -17,6 +17,7 @@ PIP_FALLBACK_INDEX_URL="${PIP_FALLBACK_INDEX_URL:-}"
 PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL:-}"
 PIP_TRUSTED_HOST="${PIP_TRUSTED_HOST:-}"
 PIP_ONLINE_FALLBACK="${PIP_ONLINE_FALLBACK:-1}"
+FORCE_BUILDKIT="${FORCE_BUILDKIT:-0}"
 DEBIAN_MIRROR="${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}"
 DEBIAN_SECURITY_MIRROR="${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}"
 SUPPORT_API_OS_BASE_IMAGE="${SUPPORT_API_OS_BASE_IMAGE:-${SUPPORT_API_OS_BASE_IMAGE_REPO:-local/rag-support-api-os-base}:${SUPPORT_API_OS_TAG:-latest}}"
@@ -40,6 +41,25 @@ if [[ "${PIP_MODE}" == "offline" ]]; then
   if ! docker image inspect "${SUPPORT_API_OS_BASE_IMAGE}" >/dev/null 2>&1; then
     echo "[FAIL] PIP_MODE=offline requires prebuilt OS base image locally: ${SUPPORT_API_OS_BASE_IMAGE}" >&2
     exit 1
+  fi
+  if [[ "${FORCE_BUILDKIT}" != "1" ]]; then
+    export DOCKER_BUILDKIT=0
+    echo "[INFO] PIP_MODE=offline: forcing DOCKER_BUILDKIT=0 to avoid remote syntax frontend pull."
+  else
+    echo "[INFO] PIP_MODE=offline: FORCE_BUILDKIT=1, keeping BuildKit enabled."
+  fi
+fi
+
+if [[ "${DOCKER_BUILDKIT:-1}" != "0" ]]; then
+  if docker buildx version >/dev/null 2>&1; then
+    if ! docker buildx imagetools inspect docker/dockerfile:1.7 >/dev/null 2>&1; then
+      echo "[FAIL] BuildKit frontend preflight failed for docker/dockerfile:1.7." >&2
+      echo "[FAIL] Check Docker credentials/helper or network access to Docker Hub." >&2
+      echo "[FAIL] Hint: for offline builds run with PIP_MODE=offline (or DOCKER_BUILDKIT=0)." >&2
+      exit 1
+    fi
+  else
+    echo "[WARN] docker buildx is unavailable; skipping BuildKit frontend preflight."
   fi
 fi
 

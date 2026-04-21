@@ -140,7 +140,7 @@ INGEST_DEPS_TAG=dev
 
 # yandex registry auth helper
 YC_REGISTRY_ID=<registry_id>
-YC_DOCKER_AUTH=1
+YC_DOCKER_AUTH=auto
 
 # pip / wheelhouse
 PIP_INDEX_URL=https://pypi.org/simple
@@ -149,6 +149,7 @@ PIP_EXTRA_INDEX_URL=
 PIP_TRUSTED_HOST=
 PIP_MODE=auto
 PIP_ONLINE_FALLBACK=1
+FORCE_BUILDKIT=0
 
 # unified CUDA torch stack
 PYTORCH_CUDA_INDEX_URL=https://download.pytorch.org/whl/cu128
@@ -199,7 +200,7 @@ TARGET_ABI=cp311
 - `support-api` runtime собирается от `${SUPPORT_API_BASE_IMAGE_REPO}:${SUPPORT_API_DEPS_TAG}` (аналогично ingest runtime от ingest base).
 
 ### Полный поток воспроизводимой сборки ingest-base (Yandex CR)
-1. Подготовьте авторизацию `yc` и docker helper:
+1. Подготовьте авторизацию `yc` и docker helper (если планируется push):
    ```bash
    yc init
    yc container registry configure-docker
@@ -219,6 +220,16 @@ TARGET_ABI=cp311
    ```bash
    docker compose build --no-cache ingest-a ingest-b
    ```
+
+### BuildKit frontend preflight и offline fallback
+- Скрипты `build_support_api_base.sh` и `build_ingest_base.sh` теперь:
+  - в `PIP_MODE=offline` по умолчанию выставляют `DOCKER_BUILDKIT=0`, чтобы не требовать pull `docker/dockerfile:1.7` с Docker Hub;
+  - поддерживают override через `FORCE_BUILDKIT=1`;
+  - в BuildKit-режиме выполняют preflight-проверку доступности `docker/dockerfile:1.7` через `docker buildx imagetools inspect`.
+- Для репозиториев `cr.yandex/*` скрипт ingest-базы конфигурирует `yc` auth только если:
+  - `YC_DOCKER_AUTH=1`; или
+  - `YC_DOCKER_AUTH=auto` и `PUSH_IMAGE=1`.
+  Во всех остальных случаях авто-конфиг пропускается.
 
 ### Troubleshooting: `403 Forbidden` при pull `cr.yandex/<registry_id>/rag-ingest-base:*`
 Если при `docker compose build ingest-a`/`ingest-b` возникает ошибка вида:
@@ -244,6 +255,29 @@ TARGET_ABI=cp311
 INGEST_BASE_IMAGE_REPO=local/rag-ingest-base
 INGEST_DEPS_TAG=dev
 ```
+
+### Troubleshooting: `error getting credentials` на `docker.io/docker/dockerfile:1.7`
+Если `build_ingest_base.sh`/`build_support_api_base.sh` падает на шаге:
+`resolve image config for docker-image://docker.io/docker/dockerfile:1.7`
+с сообщением `error getting credentials`, это ошибка credential helper или доступа к Docker Hub для BuildKit frontend.
+
+Рекомендуемые шаги:
+1. Для офлайн-сборки использовать режим по умолчанию с отключённым BuildKit:
+   ```bash
+   PIP_MODE=offline ./scripts/build_ingest_base.sh
+   ```
+   (скрипт сам выставит `DOCKER_BUILDKIT=0`, если не задан `FORCE_BUILDKIT=1`).
+2. Если требуется BuildKit, проверить preflight вручную:
+   ```bash
+   docker buildx imagetools inspect docker/dockerfile:1.7
+   ```
+3. Проверить docker credential helper:
+   - временно отключить проблемный helper в `~/.docker/config.json` и повторить;
+   - или выполнить `docker login` для нужного реестра вручную.
+4. Для Yandex CR включать авто-настройку helper только при необходимости:
+   ```bash
+   YC_DOCKER_AUTH=auto PUSH_IMAGE=1 ./scripts/build_ingest_base.sh
+   ```
 
 ### Troubleshooting: `KeyError: 'qwen3_vl'` / `Transformers does not recognize this architecture`
 Если в `ingest-a`/`ingest-b` при `VISION_*_MODE=vlm` появляется ошибка про `qwen3_vl`,
