@@ -209,7 +209,7 @@ docker compose up -d --build
 ./scripts/update_app.sh --mode online --online-strict-wheels
 ```
 
-`scripts/update_wheels.sh` синхронизирует не только зависимости из `pyproject.toml`, но и pinned docker-only пакет для ingest-base (`opencv-contrib-python-headless==4.10.0.84`), чтобы `ingest-*` не уходил в online-индекс при полном wheelhouse.
+`scripts/update_wheels.sh` синхронизирует зависимости из `pyproject.toml` и docker-only пины (`opencv-contrib-python-headless`, `torch`, `torchvision`, `torchaudio`), включая докачку CUDA wheel из `PYTORCH_CUDA_INDEX_URL`, чтобы `support-api-base`/`ingest-base` не уходили в онлайн-индекс при полном wheelhouse.
 
 ## Устойчивость сборки Python-зависимостей и офлайн-режим
 
@@ -265,27 +265,33 @@ PIP_FALLBACK_INDEX_URL=https://<your-mirror>/simple \
 
 Ранее используемая ручная команда `pip download ...` по списку пакетов всё ещё допустима, но рекомендуется именно `scripts/update_wheels.sh`: скрипт формирует список из `pyproject.toml`, валидирует транзитивные зависимости, поддерживает strict-режим и атомарно заменяет wheelhouse.
 
-### Пересборка `support-api` без внешнего base image
-`support-api` больше не зависит от `ghcr.io/csv-ans/rag-support-api-base:*` и всегда собирается из локального `app/Dockerfile.support-api`.
+### Пересборка `support-api` и `ingest` через prebuilt base-слои
+`support-api` runtime теперь собирается от `${SUPPORT_API_BASE_IMAGE_REPO}:${SUPPORT_API_DEPS_TAG}` (через `Dockerfile.support-api`), а `ingest-a`/`ingest-b` — от `${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}`.
 
-Поддерживаются два рабочих режима:
-1. **Online full rebuild** — зависимости ставятся из индексов (приоритет `PIP_INDEX_URL`, fallback `PIP_FALLBACK_INDEX_URL`):
-   ```bash
-   ./scripts/update_app.sh --mode online --build
-   ```
-2. **Wheelhouse rebuild** — сборка из локального `app/wheels`:
+Рекомендуемый порядок:
+1. Собрать/обновить wheelhouse:
    ```bash
    ./scripts/update_wheels.sh --mode refresh --strict
-   ./scripts/update_app.sh --mode offline --build
+   ```
+2. Собрать OS base-образы (APT слой):
+   ```bash
+   OS_TAG=2026-04-21 ./scripts/build_os_base_images.sh
+   ```
+3. Собрать deps base:
+   ```bash
+   SUPPORT_API_OS_BASE_IMAGE="${SUPPORT_API_OS_BASE_IMAGE_REPO}:${SUPPORT_API_OS_TAG}" \
+   IMAGE_REPO="${SUPPORT_API_BASE_IMAGE_REPO}" PIP_MODE=offline ./scripts/build_support_api_base.sh
+
+   INGEST_OS_BASE_IMAGE="${INGEST_OS_BASE_IMAGE_REPO}:${INGEST_OS_TAG}" \
+   IMAGE_REPO="${INGEST_BASE_IMAGE_REPO}" PIP_MODE=offline ./scripts/build_ingest_base.sh
+   ```
+4. Обновить `SUPPORT_API_DEPS_TAG` и `INGEST_DEPS_TAG` в `.env`.
+5. Пересобрать runtime:
+   ```bash
+   docker compose build --no-cache support-api ingest-a ingest-b
    ```
 
-Если добавлены новые зависимости в `app/pyproject.toml`, сначала пополните wheelhouse:
-```bash
-./scripts/update_wheels.sh --mode append
-```
-После этого повторите пересборку контейнера `support-api`.
-
-Для `ingest-a`/`ingest-b` сохраняется схема с базовым образом `${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}`. При ошибках pull Yandex Container Registry (`403 Forbidden`) выполните `yc container registry configure-docker` или используйте локальную сборку `app/Dockerfile.ingest-base`.
+В `PIP_MODE=offline` скрипты `build_support_api_base.sh` и `build_ingest_base.sh` выполняют fail-fast, если wheelhouse пустой или отсутствует локальный OS base image.
 
 ## Кэширование сборки Docker (BuildKit local cache)
 
