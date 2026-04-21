@@ -21,6 +21,7 @@ Environment variables:
   PIP_ONLINE_FALLBACK       0|1 (default: 1)
   DEBIAN_MIRROR             Debian mirror URL for apt
   DEBIAN_SECURITY_MIRROR    Debian security mirror URL for apt
+  INGEST_OS_BASE_IMAGE      Prebuilt ingest OS base image reference
 USAGE
 }
 
@@ -62,6 +63,7 @@ PIP_MODE="${PIP_MODE:-auto}"
 PIP_ONLINE_FALLBACK="${PIP_ONLINE_FALLBACK:-1}"
 DEBIAN_MIRROR="${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}"
 DEBIAN_SECURITY_MIRROR="${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debian-security}"
+INGEST_OS_BASE_IMAGE="${INGEST_OS_BASE_IMAGE:-${INGEST_OS_BASE_IMAGE_REPO:-local/rag-ingest-os-base}:${INGEST_OS_TAG:-latest}}"
 
 if [[ "${IMAGE_REPO}" == cr.yandex/* ]]; then
   if command -v yc >/dev/null 2>&1; then
@@ -97,9 +99,21 @@ IMAGE_REF="${IMAGE_REPO}:${DEPS_TAG}"
 echo "[INFO] Dependency tag: ${DEPS_TAG}"
 echo "[INFO] Building ${IMAGE_REF}"
 echo "[INFO] pip indexes: primary=${PIP_INDEX_URL}, fallback=${PIP_FALLBACK_INDEX_URL:-<not set>}, extra=${PIP_EXTRA_INDEX_URL:-<not set>}"
+echo "[INFO] OS base image: ${INGEST_OS_BASE_IMAGE}"
 
 if [[ -z "${PIP_FALLBACK_INDEX_URL}" ]]; then
   echo "[WARN] PIP_FALLBACK_INDEX_URL is not set. If primary TLS/network fails, there is no mirror fallback."
+fi
+
+if [[ "${PIP_MODE}" == "offline" ]]; then
+  if ! find "${APP_DIR}/wheels" -mindepth 1 -maxdepth 1 -type f -name '*.whl' -print -quit | grep -q .; then
+    echo "[FAIL] PIP_MODE=offline requires non-empty ${APP_DIR}/wheels" >&2
+    exit 1
+  fi
+  if ! docker image inspect "${INGEST_OS_BASE_IMAGE}" >/dev/null 2>&1; then
+    echo "[FAIL] PIP_MODE=offline requires prebuilt OS base image locally: ${INGEST_OS_BASE_IMAGE}" >&2
+    exit 1
+  fi
 fi
 
 docker build \
@@ -112,6 +126,7 @@ docker build \
   --build-arg PIP_ONLINE_FALLBACK="${PIP_ONLINE_FALLBACK}" \
   --build-arg DEBIAN_MIRROR="${DEBIAN_MIRROR}" \
   --build-arg DEBIAN_SECURITY_MIRROR="${DEBIAN_SECURITY_MIRROR}" \
+  --build-arg INGEST_OS_BASE_IMAGE="${INGEST_OS_BASE_IMAGE}" \
   -t "${IMAGE_REF}" \
   "${APP_DIR}"
 

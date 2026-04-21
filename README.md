@@ -115,38 +115,33 @@ docker compose up -d
 ./scripts/update_wheels.sh --mode refresh
 ```
 
-### Сборка `support-api` без внешнего base image
-`support-api` собирается напрямую из `app/Dockerfile.support-api` (без `ghcr.io/csv-ans/rag-support-api-base:*`).
-Поддерживаются два сценария пересборки:
+### Воспроизводимая offline-first сборка base-образов (`support-api` и `ingest`)
+Теперь сборка разделена на 3 уровня:
+1. **OS base** (APT-зависимости, собирается в online-контуре и переносится в offline);
+2. **deps base** (`support-api-base` / `ingest-base`, ставит Python-зависимости из wheelhouse);
+3. **runtime** (`support-api`, `ingest-a`, `ingest-b`) — быстрые пересборки кода от готового deps base.
 
-1. **Полная online-пересборка** (ставит зависимости из индексов):
-   ```bash
-   ./scripts/update_app.sh --mode online --build
-   ```
-2. **Пересборка через локальный wheelhouse** (`app/wheels`):
-   ```bash
-   ./scripts/update_wheels.sh --mode refresh --strict
-   ./scripts/update_app.sh --mode offline --build
-   ```
-
-Если в `pyproject.toml` появились новые зависимости, сначала дозаполните wheelhouse (например, `--mode append`), затем повторите пересборку `support-api`.
-
-Для `ingest-a`/`ingest-b` по-прежнему используется published base image `${INGEST_BASE_IMAGE_REPO}:${INGEST_DEPS_TAG}`.
-Скрипт `scripts/build_ingest_base.sh` передаёт в Docker build индексы/зеркала через `PIP_INDEX_URL`, `PIP_FALLBACK_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_TRUSTED_HOST`.
-Если в вашем контуре бывают TLS-сбои к primary индексу, задайте отдельный `PIP_FALLBACK_INDEX_URL` (не равный primary), иначе реального fallback не будет.
-Скрипт также автоматически подхватывает `.env` и, при `IMAGE_REPO=cr.yandex/...`, может выполнить `yc container registry configure-docker` (если `YC_DOCKER_AUTH=1` и установлен `yc` CLI).
-
-### Рекомендуемая `.env`-конфигурация для Yandex Container Registry (повторяемая сборка)
+#### Рекомендуемые переменные `.env`
 ```env
-# ingest base image location
+# support-api runtime/deps
+SUPPORT_API_BASE_IMAGE_REPO=cr.yandex/<registry_id>/rag-support-api-base
+SUPPORT_API_DEPS_TAG=dev
+
+# OS base images (APT слой)
+SUPPORT_API_OS_BASE_IMAGE_REPO=cr.yandex/<registry_id>/rag-support-api-os-base
+INGEST_OS_BASE_IMAGE_REPO=cr.yandex/<registry_id>/rag-ingest-os-base
+SUPPORT_API_OS_TAG=latest
+INGEST_OS_TAG=latest
+
+# ingest deps
 INGEST_BASE_IMAGE_REPO=cr.yandex/<registry_id>/rag-ingest-base
 INGEST_DEPS_TAG=dev
 
-# yandex registry auth helper (используется scripts/build_ingest_base.sh)
+# yandex registry auth helper
 YC_REGISTRY_ID=<registry_id>
 YC_DOCKER_AUTH=1
 
-# устойчивые pip-индексы для build_ingest_base/update_wheels
+# pip / wheelhouse
 PIP_INDEX_URL=https://pypi.org/simple
 PIP_FALLBACK_INDEX_URL=https://mirror.yandex.ru/mirrors/pypi/simple
 PIP_EXTRA_INDEX_URL=
@@ -154,12 +149,53 @@ PIP_TRUSTED_HOST=
 PIP_MODE=auto
 PIP_ONLINE_FALLBACK=1
 
-# целевые wheel-параметры для offline сборки ingest-base
+# unified CUDA torch stack
+PYTORCH_CUDA_INDEX_URL=https://download.pytorch.org/whl/cu128
+TORCH_VERSION=2.10.0
+TORCHVISION_VERSION=0.25.0
+TORCHAUDIO_VERSION=2.10.0
+
+# wheel target
 TARGET_PLATFORM=manylinux2014_x86_64
 TARGET_PYTHON_VERSION=311
 TARGET_IMPLEMENTATION=cp
 TARGET_ABI=cp311
 ```
+
+#### Полный online→offline pipeline
+1. Подготовьте wheelhouse (включая CUDA torch stack):
+   ```bash
+   ./scripts/update_wheels.sh --mode refresh --strict
+   ```
+2. Соберите OS base образы (APT-слой):
+   ```bash
+   PUSH_IMAGE=1 OS_TAG=2026-04-21 ./scripts/build_os_base_images.sh
+   ```
+3. Соберите deps base для `support-api`:
+   ```bash
+   SUPPORT_API_OS_BASE_IMAGE="${SUPPORT_API_OS_BASE_IMAGE_REPO}:${SUPPORT_API_OS_TAG}" \
+   IMAGE_REPO="${SUPPORT_API_BASE_IMAGE_REPO}" PUSH_IMAGE=1 PIP_MODE=offline ./scripts/build_support_api_base.sh
+   ```
+4. Соберите deps base для ingest:
+   ```bash
+   INGEST_OS_BASE_IMAGE="${INGEST_OS_BASE_IMAGE_REPO}:${INGEST_OS_TAG}" \
+   IMAGE_REPO="${INGEST_BASE_IMAGE_REPO}" PUSH_IMAGE=1 PIP_MODE=offline ./scripts/build_ingest_base.sh
+   ```
+5. Сохраните в `.env` теги `SUPPORT_API_DEPS_TAG` и `INGEST_DEPS_TAG` из вывода скриптов.
+6. Пересоберите runtime-образы:
+   ```bash
+   docker compose build --no-cache support-api ingest-a ingest-b
+   ```
+
+#### Что изменилось в офлайн-гарантиях
+- `build_support_api_base.sh` и `build_ingest_base.sh` в `PIP_MODE=offline` теперь делают fail-fast, если:
+  - `app/wheels` пустой;
+  - отсутствует локальный prebuilt OS base image.
+- `Dockerfile.support-api-base` и `Dockerfile.ingest-base` больше не выполняют `apt-get`; APT вынесен в `Dockerfile.support-api-os-base` / `Dockerfile.ingest-os-base`.
+- Установка CUDA torch stack в base Dockerfile теперь следует той же policy, что и остальные pip-зависимости:
+  - offline: только `/wheels`;
+  - online/auto: сначала `/wheels`, затем индекс.
+- `support-api` runtime собирается от `${SUPPORT_API_BASE_IMAGE_REPO}:${SUPPORT_API_DEPS_TAG}` (аналогично ingest runtime от ingest base).
 
 ### Полный поток воспроизводимой сборки ingest-base (Yandex CR)
 1. Подготовьте авторизацию `yc` и docker helper:
@@ -174,6 +210,7 @@ TARGET_ABI=cp311
    ```
 4. Соберите и опубликуйте ingest-base:
    ```bash
+   INGEST_OS_BASE_IMAGE="${INGEST_OS_BASE_IMAGE_REPO}:${INGEST_OS_TAG}" \
    IMAGE_REPO="${INGEST_BASE_IMAGE_REPO}" PUSH_IMAGE=1 PIP_MODE=offline ./scripts/build_ingest_base.sh
    ```
 5. Возьмите напечатанный `INGEST_DEPS_TAG=...` и сохраните в `.env`.
