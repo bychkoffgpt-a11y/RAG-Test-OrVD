@@ -171,9 +171,40 @@ extract_download_failure_reason() {
   echo "подробности см. в логе pip"
 }
 
-download_requirements_with_fallback() {
-  local dest_dir="$1"
-  local phase="$2"
+is_index_availability_error() {
+  local err_log="$1"
+  python3 - "$err_log" <<'PY'
+import pathlib
+import re
+import sys
+
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
+patterns = [
+    r"HTTPSConnectionPool",
+    r"ConnectionResetError",
+    r"Connection refused",
+    r"Temporary failure in name resolution",
+    r"Failed to establish a new connection",
+    r"Read timed out",
+    r"ConnectTimeoutError",
+    r"SSLError",
+    r"ProxyError",
+    r"too many 5\d\d error responses",
+    r"HTTP error 5\d\d",
+]
+
+for pattern in patterns:
+    if re.search(pattern, text, flags=re.IGNORECASE):
+        print("1")
+        raise SystemExit(0)
+print("0")
+PY
+}
+
+pip_download_with_index_fallback() {
+  local phase="$1"
+  local dest_dir="$2"
+  shift 2
 
   local primary_index="${PIP_INDEX_URL:-}"
   local fallback_index="${PIP_FALLBACK_INDEX_URL:-}"
@@ -205,18 +236,20 @@ download_requirements_with_fallback() {
     "${TARGET_DOWNLOAD_ARGS[@]}" \
     --dest "$dest_dir" \
     "${primary_args[@]}" \
-    -r "$req_file" 2>"$err_log"; then
+    "$@" 2>"$err_log"; then
     rm -f "$err_log"
-    log "${phase}: загрузка зависимостей успешна через primary index (${primary_index:-<pip default index>})"
+    log "${phase}: pip download успешно завершён через primary index (${primary_index:-<pip default index>})"
     return 0
   fi
 
   local primary_reason
+  local availability_error
   primary_reason="$(extract_download_failure_reason "$err_log")"
+  availability_error="$(is_index_availability_error "$err_log")"
   rm -f "$err_log"
 
-  if [[ -n "$fallback_index" && "$fallback_index" != "$primary_index" ]]; then
-    log "${phase}: primary index недоступен/неподходящая версия (${primary_reason}); переключаюсь на fallback (${fallback_index})"
+  if [[ "$availability_error" -eq 1 && -n "$fallback_index" && "$fallback_index" != "$primary_index" ]]; then
+    log "${phase}: primary index недоступен по сети/доступности (${primary_reason}); переключаюсь на fallback (${fallback_index})"
     err_log="$(mktemp)"
     if python3 -m pip download \
       --disable-pip-version-check \
@@ -225,9 +258,9 @@ download_requirements_with_fallback() {
       "${TARGET_DOWNLOAD_ARGS[@]}" \
       --dest "$dest_dir" \
       "${fallback_args[@]}" \
-      -r "$req_file" 2>"$err_log"; then
+      "$@" 2>"$err_log"; then
       rm -f "$err_log"
-      log "${phase}: загрузка зависимостей успешна через fallback index (${fallback_index})"
+      log "${phase}: pip download успешно завершён через fallback index (${fallback_index})"
       return 0
     fi
 
@@ -238,13 +271,21 @@ download_requirements_with_fallback() {
     return 1
   fi
 
-  if [[ -z "$fallback_index" ]]; then
+  if [[ "$availability_error" -ne 1 ]]; then
+    log "${phase}: fallback не используется, т.к. ошибка не относится к сети/доступности индекса (${primary_reason})"
+  elif [[ -z "$fallback_index" ]]; then
     log "${phase}: fallback index не задан, повторная попытка не выполняется"
   else
     log "${phase}: fallback index совпадает с primary (${fallback_index}), повторная попытка не выполняется"
   fi
-  log "${phase}: причина сбоя primary — ${primary_reason}"
+  log "${phase}: primary index не сработал (${primary_reason})"
   return 1
+}
+
+download_requirements_with_fallback() {
+  local dest_dir="$1"
+  local phase="$2"
+  pip_download_with_index_fallback "$phase" "$dest_dir" -r "$req_file"
 }
 
 require_cmd() {
