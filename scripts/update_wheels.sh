@@ -153,6 +153,100 @@ if matches:
 PY
 }
 
+extract_download_failure_reason() {
+  local err_log="$1"
+  local endpoints
+  endpoints="$(extract_unreachable_endpoints "$err_log" || true)"
+  if [[ -n "$endpoints" ]]; then
+    echo "не удалось подключиться к ${endpoints}"
+    return
+  fi
+
+  local last_line
+  last_line="$(tail -n 1 "$err_log" 2>/dev/null | sed 's/^\s*//; s/\s*$//')"
+  if [[ -n "$last_line" ]]; then
+    echo "$last_line"
+    return
+  fi
+  echo "подробности см. в логе pip"
+}
+
+download_requirements_with_fallback() {
+  local dest_dir="$1"
+  local phase="$2"
+
+  local primary_index="${PIP_INDEX_URL:-}"
+  local fallback_index="${PIP_FALLBACK_INDEX_URL:-}"
+  local extra_index="${PIP_EXTRA_INDEX_URL:-}"
+  local -a extra_args=()
+  local -a primary_args=()
+  local -a fallback_args=()
+  local err_log
+  err_log="$(mktemp)"
+
+  if [[ -n "$extra_index" ]]; then
+    extra_args+=(--extra-index-url "$extra_index")
+  fi
+
+  if [[ -n "$primary_index" ]]; then
+    primary_args+=(--index-url "$primary_index")
+  fi
+  primary_args+=("${extra_args[@]}")
+
+  if [[ -n "$fallback_index" ]]; then
+    fallback_args+=(--index-url "$fallback_index")
+  fi
+  fallback_args+=("${extra_args[@]}")
+
+  if python3 -m pip download \
+    --disable-pip-version-check \
+    --retries "$PIP_RETRIES" \
+    --timeout "$PIP_TIMEOUT" \
+    "${TARGET_DOWNLOAD_ARGS[@]}" \
+    --dest "$dest_dir" \
+    "${primary_args[@]}" \
+    -r "$req_file" 2>"$err_log"; then
+    rm -f "$err_log"
+    log "${phase}: загрузка зависимостей успешна через primary index (${primary_index:-<pip default index>})"
+    return 0
+  fi
+
+  local primary_reason
+  primary_reason="$(extract_download_failure_reason "$err_log")"
+  rm -f "$err_log"
+
+  if [[ -n "$fallback_index" && "$fallback_index" != "$primary_index" ]]; then
+    log "${phase}: primary index недоступен/неподходящая версия (${primary_reason}); переключаюсь на fallback (${fallback_index})"
+    err_log="$(mktemp)"
+    if python3 -m pip download \
+      --disable-pip-version-check \
+      --retries "$PIP_RETRIES" \
+      --timeout "$PIP_TIMEOUT" \
+      "${TARGET_DOWNLOAD_ARGS[@]}" \
+      --dest "$dest_dir" \
+      "${fallback_args[@]}" \
+      -r "$req_file" 2>"$err_log"; then
+      rm -f "$err_log"
+      log "${phase}: загрузка зависимостей успешна через fallback index (${fallback_index})"
+      return 0
+    fi
+
+    local fallback_reason
+    fallback_reason="$(extract_download_failure_reason "$err_log")"
+    rm -f "$err_log"
+    log "${phase}: fallback index тоже не сработал (${fallback_reason})"
+    return 1
+  fi
+
+  if [[ -z "$fallback_index" ]]; then
+    log "${phase}: fallback index не задан, повторная попытка не выполняется"
+  else
+    log "${phase}: fallback index совпадает с primary (${fallback_index}), повторная попытка не выполняется"
+  fi
+  log "${phase}: причина сбоя primary — ${primary_reason}"
+  return 1
+}
+
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Команда не найдена: $1"
 }
@@ -382,13 +476,7 @@ preflight_check_available_versions() {
   log "  PIP_EXTRA_INDEX_URL=${extra_index}"
   log "  PIP_FALLBACK_INDEX_URL=${fallback_index}"
 
-  if ! python3 -m pip download \
-    --disable-pip-version-check \
-    --retries "$PIP_RETRIES" \
-    --timeout "$PIP_TIMEOUT" \
-    --dest "$report_dir" \
-    "${TARGET_DOWNLOAD_ARGS[@]}" \
-    -r "$req_file" 2>"$preflight_err_log"; then
+  if ! download_requirements_with_fallback "$report_dir" "Preflight" 2>"$preflight_err_log"; then
     local endpoints
     endpoints="$(extract_unreachable_endpoints "$preflight_err_log" || true)"
     rm -f "$preflight_err_log"
@@ -415,13 +503,7 @@ ok "Предварительная проверка зависимостей п�
 
 if [[ "$MODE" == "append" ]]; then
   log "Режим append: докачиваю недостающие wheels в $WHEELS_DIR..."
-  run_step "Append: загрузка wheels в существующий каталог" python3 -m pip download \
-    --disable-pip-version-check \
-    --retries "$PIP_RETRIES" \
-    --timeout "$PIP_TIMEOUT" \
-    "${TARGET_DOWNLOAD_ARGS[@]}" \
-    --dest "$WHEELS_DIR" \
-    -r "$req_file"
+  run_step "Append: загрузка wheels в существующий каталог" download_requirements_with_fallback "$WHEELS_DIR" "Append"
 
   run_step "Append: докачка CUDA torch stack" download_cuda_torch_stack "$WHEELS_DIR"
 
@@ -446,13 +528,7 @@ cleanup_tmp() {
 trap 'cleanup_tmp; rm -f "$req_file"' EXIT
 
 log "Режим refresh: формирую новый wheelhouse во временном каталоге..."
-run_step "Refresh: загрузка wheels во временный каталог" python3 -m pip download \
-  --disable-pip-version-check \
-  --retries "$PIP_RETRIES" \
-  --timeout "$PIP_TIMEOUT" \
-  "${TARGET_DOWNLOAD_ARGS[@]}" \
-  --dest "$tmp_wheels_dir" \
-  -r "$req_file"
+run_step "Refresh: загрузка wheels во временный каталог" download_requirements_with_fallback "$tmp_wheels_dir" "Refresh"
 
 run_step "Refresh: докачка CUDA torch stack" download_cuda_torch_stack "$tmp_wheels_dir"
 
