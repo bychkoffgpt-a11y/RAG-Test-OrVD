@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 ARG INGEST_OS_BASE_IMAGE=python:3.11-slim
 FROM ${INGEST_OS_BASE_IMAGE}
 

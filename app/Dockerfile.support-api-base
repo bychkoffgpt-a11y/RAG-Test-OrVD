@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 ARG SUPPORT_API_OS_BASE_IMAGE=python:3.11-slim
 FROM ${SUPPORT_API_OS_BASE_IMAGE}
 
@@ -233,4 +232,3 @@ if os.getenv("TORCH_DEVICE") == "cuda":
         else:
             print(f"[WARN] {msg}; validate at runtime")
 PY
-

@@ -22,6 +22,7 @@ Environment variables:
   DEBIAN_MIRROR             Debian mirror URL for apt
   DEBIAN_SECURITY_MIRROR    Debian security mirror URL for apt
   INGEST_OS_BASE_IMAGE      Prebuilt ingest OS base image reference
+  YC_DOCKER_AUTH            auto|0|1 (default: auto)
 USAGE
 }
 
@@ -66,10 +67,21 @@ DEBIAN_SECURITY_MIRROR="${DEBIAN_SECURITY_MIRROR:-https://mirror.yandex.ru/debia
 INGEST_OS_BASE_IMAGE="${INGEST_OS_BASE_IMAGE:-${INGEST_OS_BASE_IMAGE_REPO:-local/rag-ingest-os-base}:${INGEST_OS_TAG:-latest}}"
 
 if [[ "${IMAGE_REPO}" == cr.yandex/* ]]; then
+  YC_DOCKER_AUTH="${YC_DOCKER_AUTH:-auto}"
   if command -v yc >/dev/null 2>&1; then
-    if [[ "${YC_DOCKER_AUTH:-1}" == "1" ]]; then
+    should_configure_yc_auth=0
+    if [[ "${YC_DOCKER_AUTH}" == "1" ]]; then
+      should_configure_yc_auth=1
+    elif [[ "${YC_DOCKER_AUTH}" == "auto" && "${PUSH_IMAGE}" == "1" ]]; then
+      should_configure_yc_auth=1
+    fi
+    if [[ "${should_configure_yc_auth}" == "1" ]]; then
       echo "[INFO] Configuring Docker auth for Yandex Container Registry via yc..."
-      yc container registry configure-docker >/dev/null
+      if ! yc container registry configure-docker >/dev/null; then
+        echo "[WARN] yc configure-docker failed. Continue without modifying docker credentials."
+      fi
+    else
+      echo "[INFO] Skipping yc docker auth auto-config (YC_DOCKER_AUTH=${YC_DOCKER_AUTH}, PUSH_IMAGE=${PUSH_IMAGE})."
     fi
   else
     echo "[WARN] yc CLI is not available. Ensure 'docker login' was done for cr.yandex."
