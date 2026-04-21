@@ -207,6 +207,31 @@ INGEST_BASE_IMAGE_REPO=local/rag-ingest-base
 INGEST_DEPS_TAG=dev
 ```
 
+### Troubleshooting: `KeyError: 'qwen3_vl'` / `Transformers does not recognize this architecture`
+Если в `ingest-a`/`ingest-b` при `VISION_*_MODE=vlm` появляется ошибка про `qwen3_vl`,
+это признак несовместимой версии `transformers` внутри ingest-образа.
+
+Проверка внутри контейнера:
+```bash
+docker compose run --rm ingest-b python -c "import transformers; print(transformers.__version__)"
+docker compose run --rm ingest-b python -c "from transformers import AutoConfig; print(AutoConfig.from_pretrained('/models/vision/qwen3-vl-2b-instruct', trust_remote_code=True, local_files_only=True).model_type)"
+```
+
+Рекомендуемый порядок исправления:
+1. Пересобрать и (опционально) опубликовать ingest-base:
+   ```bash
+   IMAGE_REPO="${INGEST_BASE_IMAGE_REPO}" PUSH_IMAGE=1 PIP_MODE=offline ./scripts/build_ingest_base.sh
+   ```
+2. Обновить `INGEST_DEPS_TAG` в `.env` на новый тег из вывода `build_ingest_base.sh`.
+3. Пересобрать ingest-сервисы без кэша:
+   ```bash
+   docker compose build --no-cache ingest-a ingest-b
+   ```
+4. Прогнать preflight:
+   ```bash
+   ./scripts/preflight_check.sh --mode offline --check-ocr-stack
+   ```
+
 ## Документация
 - [Архитектура](docs/architecture.md)
 - [Реестр моделей](docs/model_registry.md)
