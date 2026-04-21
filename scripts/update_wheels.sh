@@ -17,10 +17,12 @@ STRICT=0
 PIP_RETRIES="${PIP_RETRIES:-12}"
 PIP_TIMEOUT="${PIP_TIMEOUT:-60}"
 TARGET_PLATFORM="${TARGET_PLATFORM:-manylinux2014_x86_64}"
+TORCH_TARGET_PLATFORM="${TORCH_TARGET_PLATFORM:-manylinux_2_28_x86_64}"
 TARGET_PYTHON_VERSION="${TARGET_PYTHON_VERSION:-311}"
 TARGET_IMPLEMENTATION="${TARGET_IMPLEMENTATION:-cp}"
 TARGET_ABI="${TARGET_ABI:-cp311}"
 PYTORCH_CUDA_INDEX_URL="${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
+PYTORCH_CUDA_EXTRA_INDEX_URL="${PYTORCH_CUDA_EXTRA_INDEX_URL:-}"
 TORCH_VERSION="${TORCH_VERSION:-2.10.0}"
 TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.25.0}"
 TORCHAUDIO_VERSION="${TORCHAUDIO_VERSION:-2.10.0}"
@@ -49,6 +51,7 @@ Options:
     PIP_RETRIES  количество retries для pip (по умолчанию: 12)
     PIP_TIMEOUT  таймаут HTTP-запроса pip в секундах (по умолчанию: 60)
     TARGET_PLATFORM          целевая платформа wheel (по умолчанию: manylinux2014_x86_64)
+    TORCH_TARGET_PLATFORM    целевая платформа wheel для CUDA torch stack (по умолчанию: manylinux_2_28_x86_64)
     TARGET_PYTHON_VERSION    целевая версия Python для wheel (по умолчанию: 311)
     TARGET_IMPLEMENTATION    python implementation (по умолчанию: cp)
     TARGET_ABI               ABI для wheel (по умолчанию: cp311)
@@ -308,16 +311,22 @@ PY
 download_cuda_torch_stack() {
   local wheel_dir="$1"
   local phase="${2:-CUDA torch stack}"
+  local cuda_extra_index="${PYTORCH_CUDA_EXTRA_INDEX_URL:-${PIP_EXTRA_INDEX_URL:-}}"
+  local -a cuda_extra_index_args=()
+  if [[ -n "$cuda_extra_index" ]]; then
+    cuda_extra_index_args+=(--extra-index-url "$cuda_extra_index")
+  fi
   local err_log
   err_log="$(mktemp)"
-  log "${phase}: докачиваю CUDA torch stack из ${PYTORCH_CUDA_INDEX_URL}..."
+  log "${phase}: докачиваю CUDA torch stack из ${PYTORCH_CUDA_INDEX_URL} (extra=${cuda_extra_index:-<not set>}, platform=${TORCH_TARGET_PLATFORM})..."
   if python3 -m pip download \
     --disable-pip-version-check \
     --retries "$PIP_RETRIES" \
     --timeout "$PIP_TIMEOUT" \
     --dest "$wheel_dir" \
-    "${TARGET_DOWNLOAD_ARGS[@]}" \
+    "${TORCH_TARGET_DOWNLOAD_ARGS[@]}" \
     --index-url "$PYTORCH_CUDA_INDEX_URL" \
+    "${cuda_extra_index_args[@]}" \
     "torch==${TORCH_VERSION}" \
     "torchvision==${TORCHVISION_VERSION}" \
     "torchaudio==${TORCHAUDIO_VERSION}" 2>"$err_log"; then
@@ -336,6 +345,69 @@ download_cuda_torch_stack() {
   fi
   echo "${phase}: не удалось скачать torch stack из PyTorch CUDA index (${PYTORCH_CUDA_INDEX_URL}): ${reason}" >&2
   return 1
+}
+
+extract_missing_requirement_name() {
+  local err_log="$1"
+  python3 - "$err_log" <<'PY'
+import pathlib
+import re
+import sys
+
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
+patterns = [
+    re.compile(r"Could not find a version that satisfies the requirement\s+([^\s,;]+)"),
+    re.compile(r"No matching distribution found for\s+([^\s,;]+)"),
+]
+for pattern in patterns:
+    match = pattern.search(text)
+    if match:
+        print(match.group(1))
+        raise SystemExit(0)
+print("")
+PY
+}
+
+preflight_cuda_torch_transitive_check() {
+  local wheel_dir="$1"
+  local phase="${2:-Preflight(B: PyTorch CUDA index)}"
+  local cuda_extra_index="${PYTORCH_CUDA_EXTRA_INDEX_URL:-${PIP_EXTRA_INDEX_URL:-}}"
+  local -a cuda_extra_index_args=()
+  if [[ -n "$cuda_extra_index" ]]; then
+    cuda_extra_index_args+=(--extra-index-url "$cuda_extra_index")
+  fi
+  local -a torch_specs=(
+    "torch==${TORCH_VERSION}"
+    "torchvision==${TORCHVISION_VERSION}"
+    "torchaudio==${TORCHAUDIO_VERSION}"
+  )
+  local spec
+  for spec in "${torch_specs[@]}"; do
+    local err_log
+    err_log="$(mktemp)"
+    if ! python3 -m pip download \
+      --disable-pip-version-check \
+      --retries "$PIP_RETRIES" \
+      --timeout "$PIP_TIMEOUT" \
+      --dest "$wheel_dir" \
+      "${TORCH_TARGET_DOWNLOAD_ARGS[@]}" \
+      --index-url "$PYTORCH_CUDA_INDEX_URL" \
+      "${cuda_extra_index_args[@]}" \
+      "$spec" 2>"$err_log"; then
+      local missing_requirement
+      local reason
+      missing_requirement="$(extract_missing_requirement_name "$err_log")"
+      reason="$(extract_download_failure_reason "$err_log")"
+      rm -f "$err_log"
+      if [[ -n "$missing_requirement" ]]; then
+        echo "${phase}: пакет не найден: ${missing_requirement} (проверка при загрузке ${spec})" >&2
+      else
+        echo "${phase}: не удалось проверить транзитивные зависимости для ${spec}: ${reason}" >&2
+      fi
+      return 1
+    fi
+    rm -f "$err_log"
+  done
 }
 
 require_cmd() {
@@ -506,9 +578,17 @@ TARGET_DOWNLOAD_ARGS=(
   "--implementation" "$TARGET_IMPLEMENTATION"
   "--abi" "$TARGET_ABI"
 )
+TORCH_TARGET_DOWNLOAD_ARGS=(
+  "--only-binary=:all:"
+  "--platform" "$TORCH_TARGET_PLATFORM"
+  "--python-version" "$TARGET_PYTHON_VERSION"
+  "--implementation" "$TARGET_IMPLEMENTATION"
+  "--abi" "$TARGET_ABI"
+)
 
 log "Целевая конфигурация wheel:"
 log "  TARGET_PLATFORM=${TARGET_PLATFORM}"
+log "  TORCH_TARGET_PLATFORM=${TORCH_TARGET_PLATFORM}"
 log "  TARGET_PYTHON_VERSION=${TARGET_PYTHON_VERSION}"
 log "  TARGET_IMPLEMENTATION=${TARGET_IMPLEMENTATION}"
 log "  TARGET_ABI=${TARGET_ABI}"
@@ -517,6 +597,7 @@ log "  PYTORCH_CUDA_INDEX_URL=${PYTORCH_CUDA_INDEX_URL}"
 log "  TORCH_VERSION=${TORCH_VERSION}"
 log "  TORCHVISION_VERSION=${TORCHVISION_VERSION}"
 log "  TORCHAUDIO_VERSION=${TORCHAUDIO_VERSION}"
+log "  PYTORCH_CUDA_EXTRA_INDEX_URL=${PYTORCH_CUDA_EXTRA_INDEX_URL:-<not set>}"
 
 validate_wheelhouse() {
   local wheel_dir="$1"
@@ -547,9 +628,11 @@ preflight_check_available_versions() {
   local primary_index
   local extra_index
   local fallback_index
+  local torch_extra_index
   primary_index="${PIP_INDEX_URL:-<pip default index>}"
   extra_index="${PIP_EXTRA_INDEX_URL:-<not set>}"
   fallback_index="${PIP_FALLBACK_INDEX_URL:-<not set>}"
+  torch_extra_index="${PYTORCH_CUDA_EXTRA_INDEX_URL:-${PIP_EXTRA_INDEX_URL:-<not set>}}"
   log "Проверка доступности зависимостей через индексы:"
   log "  PIP_INDEX_URL=${primary_index}"
   log "  PIP_EXTRA_INDEX_URL=${extra_index}"
@@ -573,6 +656,26 @@ preflight_check_available_versions() {
 
   preflight_err_log="$(mktemp)"
   log "Preflight (фаза B): проверка CUDA torch stack через PyTorch CUDA index"
+  log "Preflight (фаза B): effective indexes/platform:"
+  log "  index-url=${PYTORCH_CUDA_INDEX_URL}"
+  log "  extra-index-url=${torch_extra_index}"
+  log "  platform=${TORCH_TARGET_PLATFORM}"
+  if ! preflight_cuda_torch_transitive_check "$report_dir" "Preflight(B: PyTorch CUDA index)" 2>"$preflight_err_log"; then
+    local endpoints
+    endpoints="$(extract_unreachable_endpoints "$preflight_err_log" || true)"
+    local reason
+    reason="$(extract_download_failure_reason "$preflight_err_log")"
+    rm -f "$preflight_err_log"
+    rm -f "$req_without_torch"
+    rm -rf "$report_dir"
+    if [[ -n "$endpoints" ]]; then
+      fail "Preflight (фаза B, PyTorch CUDA index): не удалось подключиться к ${endpoints} (retries=${PIP_RETRIES}, timeout=${PIP_TIMEOUT}s)."
+    fi
+    fail "Preflight (фаза B, PyTorch CUDA index): проверка транзитивных зависимостей не пройдена: ${reason}"
+  fi
+  rm -f "$preflight_err_log"
+
+  preflight_err_log="$(mktemp)"
   if ! download_cuda_torch_stack "$report_dir" "Preflight(B: PyTorch CUDA index)" 2>"$preflight_err_log"; then
     local endpoints
     endpoints="$(extract_unreachable_endpoints "$preflight_err_log" || true)"
