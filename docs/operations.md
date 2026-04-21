@@ -464,6 +464,25 @@ curl -sS http://localhost:8000/v1/chat/completions \
 
 Если этот запрос тоже зависает — проблема в backend-пайплайне (retrieval/LLM), а не в UI.
 
+### Диагностика мультимодальных вложений из OpenWebUI
+Если модель отвечает, что "видит только изображение" или OCR-пустой:
+
+1. Проверьте логи materialization в `support-api`:
+```bash
+docker compose logs --tail=200 support-api | rg -n "attachment_|vision_image_not_found|vision_ocr_"
+```
+
+2. Проверьте, что общий volume с загрузками подключён:
+```bash
+docker compose exec -T support-api sh -lc "ls -la /data/runtime_uploads | head"
+docker compose exec -T openwebui sh -lc "ls -la /app/backend/data/uploads | head"
+```
+
+3. Проверьте env-параметры:
+- `VISION_ATTACHMENT_PATH_ALIASES` (по умолчанию `/app/backend/data/uploads=/data/runtime_uploads`);
+- `VISION_ATTACHMENT_MAX_BYTES`;
+- `VISION_ATTACHMENT_ALLOWED_MIME_TYPES`.
+
 ### 3) Проверить, где именно висит пайплайн по логам support-api
 ```bash
 docker compose logs -f support-api | rg -n "rag_|retriever_|qdrant_|embedding_model|openai_compat_generation_params|request completed"

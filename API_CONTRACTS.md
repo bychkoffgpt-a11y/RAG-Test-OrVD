@@ -66,6 +66,15 @@ OpenAI-compatible endpoint.
 - `max_tokens` (default 1024), `temperature` (default 0.1), `stream`;
 - image attachments в `content` (`image_url`, `input_image`, `image`).
 
+Форматы image-вложений:
+- `file:///...` (локальный путь в контейнере `support-api`, с учётом alias из `VISION_ATTACHMENT_PATH_ALIASES`);
+- `data:image/<type>;base64,...` (будет материализовано во временный файл в `${FILE_STORAGE_ROOT}/runtime_uploads`);
+- `http(s)://...` (изображение будет загружено и материализовано во временный файл в `${FILE_STORAGE_ROOT}/runtime_uploads`).
+
+Ограничения image-вложений:
+- максимальный размер: `VISION_ATTACHMENT_MAX_BYTES`;
+- разрешённые MIME-типы: `VISION_ATTACHMENT_ALLOWED_MIME_TYPES`.
+
 Возвращает:
 - стандартное поле `choices`;
 - дополнительные поля проекта: `sources`, `images`, `visual_evidence`.

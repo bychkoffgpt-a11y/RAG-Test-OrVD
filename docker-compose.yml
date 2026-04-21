@@ -11,6 +11,7 @@ volumes:
   loki_data:
   prometheus_data:
   openwebui_data:
+  shared_uploads:
 
 services:
   postgres:
@@ -101,6 +102,7 @@ services:
       - ./data:/data
       - ./models:/models:ro
       - ./app/logs:/app/logs
+      - shared_uploads:/data/runtime_uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -124,6 +126,7 @@ services:
       OPENAI_API_KEY: ${WEBUI_API_KEY}
     volumes:
       - openwebui_data:/app/backend/data
+      - shared_uploads:/app/backend/data/uploads
     depends_on: [support-api]
     ports:
       - "3000:8080"

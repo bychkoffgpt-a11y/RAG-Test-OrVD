@@ -157,11 +157,23 @@ curl -s http://localhost:8000/health
 ```
 
 ### 9.2 Проверка OpenAI-compatible multimodal
-Отправьте `messages` с `type=text` + `type=image_url` (`file:///...`) и убедитесь, что в ответе есть:
+Отправьте `messages` с `type=text` + `type=image_url` и убедитесь, что в ответе есть:
 - `choices[].message.content`
 - `sources`
 - `images`
 - `visual_evidence`
+
+Поддерживаемые варианты `image_url`:
+- `file:///...` (локальный путь в `support-api`);
+- `data:image/<type>;base64,...`;
+- `http(s)://...`.
+
+Для интеграции с OpenWebUI по docker-compose используется общий volume `shared_uploads`, смонтированный в:
+- `openwebui`: `/app/backend/data/uploads`;
+- `support-api`: `/data/runtime_uploads`.
+
+По умолчанию alias путей задаётся env `VISION_ATTACHMENT_PATH_ALIASES`:
+`/app/backend/data/uploads=/data/runtime_uploads`.
 
 ### 9.3 Проверка логов vision
 
