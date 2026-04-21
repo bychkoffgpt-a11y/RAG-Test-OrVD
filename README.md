@@ -116,6 +116,10 @@ docker compose up -d
 ./scripts/update_wheels.sh --mode refresh
 ```
 
+`update_wheels.sh` использует раздельную стратегию индексов:
+- обычные зависимости (всё кроме `torch/torchvision/torchaudio`) проверяются/скачиваются через `PIP_INDEX_URL` с fallback на `PIP_FALLBACK_INDEX_URL`;
+- CUDA torch stack (`torch==...`, `torchvision==...`, `torchaudio==...`) проверяется/скачивается отдельно через `PYTORCH_CUDA_INDEX_URL`.
+
 ### Воспроизводимая offline-first сборка base-образов (`support-api` и `ingest`)
 Теперь сборка разделена на 3 уровня:
 1. **OS base** (APT-зависимости, собирается в online-контуре и переносится в offline);
