@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+import base64
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -195,3 +197,106 @@ def test_chat_completions_accepts_image_only_message(monkeypatch):
     assert dummy.last_payload.question == 'Опишите, что видно на скриншоте, и предложите решение проблемы.'
     assert len(dummy.last_payload.attachments) == 1
     assert dummy.last_payload.attachments[0].image_path == '/tmp/screen-only.png'
+
+
+def test_chat_completions_materializes_data_image_url(monkeypatch, tmp_path):
+    dummy = DummyOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    monkeypatch.setattr(main_module.settings, 'file_storage_root', str(tmp_path))
+    client = TestClient(app)
+
+    image_bytes = b'\x89PNG\r\n\x1a\nfake'
+    data_url = f"data:image/png;base64,{base64.b64encode(image_bytes).decode('ascii')}"
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [
+            {
+                'role': 'user',
+                'content': [
+                    {'type': 'text', 'text': 'Что на изображении?'},
+                    {'type': 'image_url', 'image_url': {'url': data_url}},
+                ],
+            }
+        ],
+        'stream': False,
+    }
+
+    response = client.post('/v1/chat/completions', json=payload)
+
+    assert response.status_code == 200
+    assert dummy.last_payload is not None
+    assert len(dummy.last_payload.attachments) == 1
+    image_path = Path(dummy.last_payload.attachments[0].image_path)
+    assert image_path.exists()
+    assert image_path.read_bytes() == image_bytes
+
+
+def test_chat_completions_materializes_http_image_url(monkeypatch, tmp_path):
+    class DummyHTTPResponse:
+        status_code = 200
+        headers = {'content-type': 'image/png'}
+        content = b'remote-image'
+
+    def fake_get(url, timeout, follow_redirects):
+        assert url == 'https://example.com/image.png'
+        assert follow_redirects is True
+        return DummyHTTPResponse()
+
+    dummy = DummyOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    monkeypatch.setattr(main_module.settings, 'file_storage_root', str(tmp_path))
+    monkeypatch.setattr(main_module.httpx, 'get', fake_get)
+    client = TestClient(app)
+
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [
+            {
+                'role': 'user',
+                'content': [
+                    {'type': 'text', 'text': 'Проверь изображение'},
+                    {'type': 'image_url', 'image_url': {'url': 'https://example.com/image.png'}},
+                ],
+            }
+        ],
+        'stream': False,
+    }
+
+    response = client.post('/v1/chat/completions', json=payload)
+
+    assert response.status_code == 200
+    assert dummy.last_payload is not None
+    saved_path = Path(dummy.last_payload.attachments[0].image_path)
+    assert saved_path.exists()
+    assert saved_path.read_bytes() == b'remote-image'
+
+
+def test_chat_completions_applies_path_aliases(monkeypatch):
+    dummy = DummyOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    monkeypatch.setattr(
+        main_module.settings,
+        'vision_attachment_path_aliases',
+        '/app/backend/data/uploads=/data/runtime_uploads;/tmp=/tmp',
+    )
+    client = TestClient(app)
+
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [
+            {
+                'role': 'user',
+                'content': [
+                    {'type': 'text', 'text': 'Что на скриншоте?'},
+                    {'type': 'image_url', 'image_url': {'url': 'file:///app/backend/data/uploads/abc.png'}},
+                ],
+            }
+        ],
+        'stream': False,
+    }
+
+    response = client.post('/v1/chat/completions', json=payload)
+
+    assert response.status_code == 200
+    assert dummy.last_payload is not None
+    assert dummy.last_payload.attachments[0].image_path == '/data/runtime_uploads/abc.png'

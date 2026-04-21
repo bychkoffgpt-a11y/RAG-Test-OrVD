@@ -25,6 +25,7 @@
 - `/ask` и `/v1/chat/completions` принимают текст и изображения пользователя.
 - Скриншоты проходят OCR + визуальный анализ; результат включается в prompt и возвращается полем `visual_evidence`.
 - Ingest DOCX/PDF извлекает изображения, строит OCR/caption чанки и индексирует их в Qdrant наравне с текстом.
+- В `/v1/chat/completions` поддержаны image-вложения форматов `file://`, `data:image/...;base64,...` и `http(s)://...` (с материализацией в `${FILE_STORAGE_ROOT}/runtime_uploads`).
 
 ### Переключение vision-режимов (runtime/ingest)
 Для обратной совместимости по умолчанию сохранён OCR-режим.

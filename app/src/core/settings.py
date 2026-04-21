@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     vision_model_device: str = 'auto'
     vision_model_dtype: str = 'auto'
     vision_model_max_new_tokens: int = 160
+    vision_attachment_max_bytes: int = 10 * 1024 * 1024
+    vision_attachment_allowed_mime_types: set[str] = {
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+        'image/bmp',
+        'image/tiff',
+        'image/gif',
+    }
+    vision_attachment_path_aliases: str = '/app/backend/data/uploads=/data/runtime_uploads'
     vision_model_prompt_runtime: str = (
         'Опиши скриншот пользователя для службы поддержки. '
         'Если видны ошибки/коды/статусы — укажи их.'
