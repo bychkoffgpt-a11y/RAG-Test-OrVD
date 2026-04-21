@@ -17,7 +17,7 @@ STRICT=0
 PIP_RETRIES="${PIP_RETRIES:-12}"
 PIP_TIMEOUT="${PIP_TIMEOUT:-60}"
 TARGET_PLATFORM="${TARGET_PLATFORM:-manylinux2014_x86_64}"
-TORCH_TARGET_PLATFORM="${TORCH_TARGET_PLATFORM:-manylinux_2_28_x86_64}"
+TORCH_TARGET_PLATFORM="${TORCH_TARGET_PLATFORM:-auto}"
 TARGET_PYTHON_VERSION="${TARGET_PYTHON_VERSION:-311}"
 TARGET_IMPLEMENTATION="${TARGET_IMPLEMENTATION:-cp}"
 TARGET_ABI="${TARGET_ABI:-cp311}"
@@ -51,7 +51,10 @@ Options:
     PIP_RETRIES  количество retries для pip (по умолчанию: 12)
     PIP_TIMEOUT  таймаут HTTP-запроса pip в секундах (по умолчанию: 60)
     TARGET_PLATFORM          целевая платформа wheel (по умолчанию: manylinux2014_x86_64)
-    TORCH_TARGET_PLATFORM    целевая платформа wheel для CUDA torch stack (по умолчанию: manylinux_2_28_x86_64)
+    TORCH_TARGET_PLATFORM    целевая платформа wheel для CUDA torch stack:
+                             - auto (по умолчанию): не передавать --platform/--abi/--python-version,
+                               позволить pip подобрать совместимые wheel на текущем хосте
+                             - явный тег (например manylinux_2_28_x86_64)
     TARGET_PYTHON_VERSION    целевая версия Python для wheel (по умолчанию: 311)
     TARGET_IMPLEMENTATION    python implementation (по умолчанию: cp)
     TARGET_ABI               ABI для wheel (по умолчанию: cp311)
@@ -580,11 +583,16 @@ TARGET_DOWNLOAD_ARGS=(
 )
 TORCH_TARGET_DOWNLOAD_ARGS=(
   "--only-binary=:all:"
-  "--platform" "$TORCH_TARGET_PLATFORM"
-  "--python-version" "$TARGET_PYTHON_VERSION"
-  "--implementation" "$TARGET_IMPLEMENTATION"
-  "--abi" "$TARGET_ABI"
 )
+
+if [[ "$TORCH_TARGET_PLATFORM" != "auto" ]]; then
+  TORCH_TARGET_DOWNLOAD_ARGS+=(
+    "--platform" "$TORCH_TARGET_PLATFORM"
+    "--python-version" "$TARGET_PYTHON_VERSION"
+    "--implementation" "$TARGET_IMPLEMENTATION"
+    "--abi" "$TARGET_ABI"
+  )
+fi
 
 log "Целевая конфигурация wheel:"
 log "  TARGET_PLATFORM=${TARGET_PLATFORM}"
@@ -592,6 +600,9 @@ log "  TORCH_TARGET_PLATFORM=${TORCH_TARGET_PLATFORM}"
 log "  TARGET_PYTHON_VERSION=${TARGET_PYTHON_VERSION}"
 log "  TARGET_IMPLEMENTATION=${TARGET_IMPLEMENTATION}"
 log "  TARGET_ABI=${TARGET_ABI}"
+if [[ "$TORCH_TARGET_PLATFORM" == "auto" ]]; then
+  log "  TORCH_TARGET_PLATFORM=auto: torch stack будет загружаться без --platform/--abi ограничений"
+fi
 
 log "  PYTORCH_CUDA_INDEX_URL=${PYTORCH_CUDA_INDEX_URL}"
 log "  TORCH_VERSION=${TORCH_VERSION}"
