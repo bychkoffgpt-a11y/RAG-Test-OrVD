@@ -340,6 +340,29 @@ check_ingest_ocr_stack() {
   ok "ingest-a: libGL.so.1 найден"
 }
 
+check_ingest_vlm_stack() {
+  if [[ "$VISION_INGEST_MODE" != "vlm" && "$VISION_RUNTIME_MODE" != "vlm" ]]; then
+    return 0
+  fi
+
+  if [[ "$SKIP_DOCKER_CHECK" -eq 1 ]]; then
+    warn "VLM-проверка ingest-a пропущена из-за --skip-docker"
+    return 0
+  fi
+
+  echo "[INFO] Проверка VLM-стека в ingest-a (transformers + AutoConfig)"
+
+  if ! docker compose -f "$COMPOSE_FILE" run --rm ingest-a python -c "import transformers; print(transformers.__version__)"; then
+    fail "VLM-стек ingest-a невалиден: не удалось импортировать transformers. Подсказка: пересоберите ingest-base/ingest-a без кэша и повторите preflight."
+  fi
+  ok "ingest-a: transformers импортируется"
+
+  if ! docker compose -f "$COMPOSE_FILE" run --rm ingest-a python -c "from transformers import AutoConfig; print(AutoConfig.from_pretrained('${VISION_MODEL_DIR}', trust_remote_code=True, local_files_only=True).model_type)" >/dev/null; then
+    fail "VLM-стек ingest-a невалиден: AutoConfig не распознаёт архитектуру модели в ${VISION_MODEL_DIR}. Подсказка: обновите transformers в ingest-base, пересоберите ingest-base/ingest-a без кэша и повторите preflight."
+  fi
+  ok "ingest-a: AutoConfig распознаёт VLM-архитектуру"
+}
+
 require_file "$ENV_FILE"
 require_file "$COMPOSE_FILE"
 
@@ -399,5 +422,6 @@ fi
 
 check_nvidia_driver_cuda_compat
 check_ingest_ocr_stack
+check_ingest_vlm_stack
 
 ok "Preflight проверка завершена успешно"
