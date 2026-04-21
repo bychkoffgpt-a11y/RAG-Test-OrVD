@@ -199,7 +199,7 @@ TARGET_ABI=cp311
 - `support-api` runtime собирается от `${SUPPORT_API_BASE_IMAGE_REPO}:${SUPPORT_API_DEPS_TAG}` (аналогично ingest runtime от ingest base).
 
 ### Полный поток воспроизводимой сборки ingest-base (Yandex CR)
-1. Подготовьте авторизацию `yc` и docker helper (если планируется push):
+1. Подготовьте авторизацию `yc` и docker helper:
    ```bash
    yc init
    yc container registry configure-docker
@@ -219,13 +219,6 @@ TARGET_ABI=cp311
    ```bash
    docker compose build --no-cache ingest-a ingest-b
    ```
-
-### BuildKit и offline-сборка deps-base
-- `Dockerfile.support-api-base` и `Dockerfile.ingest-base` используют встроенный frontend Dockerfile (без удалённого `# syntax=...`), поэтому сборка не зависит от pull `docker/dockerfile:*` из Docker Hub.
-- Для репозиториев `cr.yandex/*` скрипт ingest-базы конфигурирует `yc` auth только если:
-  - `YC_DOCKER_AUTH=1`; или
-  - `YC_DOCKER_AUTH=auto` и `PUSH_IMAGE=1`.
-  Во всех остальных случаях авто-конфиг пропускается.
 
 ### Troubleshooting: `403 Forbidden` при pull `cr.yandex/<registry_id>/rag-ingest-base:*`
 Если при `docker compose build ingest-a`/`ingest-b` возникает ошибка вида:
@@ -251,19 +244,6 @@ TARGET_ABI=cp311
 INGEST_BASE_IMAGE_REPO=local/rag-ingest-base
 INGEST_DEPS_TAG=dev
 ```
-
-### Troubleshooting: `error getting credentials` при сборке/пуше в Yandex CR
-Если `build_ingest_base.sh` падает с ошибками авторизации после запуска `yc container registry configure-docker`,
-проверьте docker credential helper и включайте авто-настройку только при необходимости:
-1. Для Yandex CR включать авто-настройку helper только при необходимости:
-   ```bash
-   YC_DOCKER_AUTH=auto PUSH_IMAGE=1 ./scripts/build_ingest_base.sh
-   ```
-2. Если push не требуется (локальная сборка), отключить авто-настройку:
-   ```bash
-   YC_DOCKER_AUTH=0 PUSH_IMAGE=0 ./scripts/build_ingest_base.sh
-   ```
-3. Проверить `~/.docker/config.json` и при необходимости выполнить `docker login` вручную.
 
 ### Troubleshooting: `KeyError: 'qwen3_vl'` / `Transformers does not recognize this architecture`
 Если в `ingest-a`/`ingest-b` при `VISION_*_MODE=vlm` появляется ошибка про `qwen3_vl`,
