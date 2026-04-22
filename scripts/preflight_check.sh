@@ -357,8 +357,8 @@ check_ingest_vlm_stack() {
   fi
   ok "ingest-a: transformers импортируется"
 
-  if ! docker compose -f "$COMPOSE_FILE" run --rm ingest-a python -c "from transformers import AutoConfig; print(AutoConfig.from_pretrained('${VISION_MODEL_DIR}', trust_remote_code=True, local_files_only=True).model_type)" >/dev/null; then
-    fail "VLM-стек ingest-a невалиден: AutoConfig не распознаёт архитектуру модели в ${VISION_MODEL_DIR}. Подсказка: обновите transformers в ingest-base, пересоберите ingest-base/ingest-a без кэша и повторите preflight."
+  if ! docker compose -f "$COMPOSE_FILE" run --rm ingest-a python -c "from transformers import AutoConfig; print(AutoConfig.from_pretrained('${VISION_MODEL_PATH}', trust_remote_code=True, local_files_only=True).model_type)" >/dev/null; then
+    fail "VLM-стек ingest-a невалиден: AutoConfig не распознаёт архитектуру модели в ${VISION_MODEL_PATH} (container path, задаётся VISION_MODEL_PATH). Подсказка: обновите transformers в ingest-base, пересоберите ingest-base/ingest-a без кэша и повторите preflight."
   fi
   ok "ingest-a: AutoConfig распознаёт VLM-архитектуру"
 }
@@ -374,6 +374,7 @@ set +a
 MODELS_ROOT_DIR="${MODELS_ROOT_DIR:-$ROOT_DIR/models}"
 LLM_MODEL_DIR="${LLM_MODEL_DIR:-$MODELS_ROOT_DIR/llm}"
 VISION_MODEL_DIR="${VISION_MODEL_DIR:-$MODELS_ROOT_DIR/vision/qwen3-vl-2b-instruct}"
+VISION_MODEL_PATH="${VISION_MODEL_PATH:-/models/vision/qwen3-vl-2b-instruct}"
 EMBEDDING_MODEL_DIR="${EMBEDDING_MODEL_DIR:-$MODELS_ROOT_DIR/embeddings/bge-m3}"
 RERANKER_MODEL_DIR="${RERANKER_MODEL_DIR:-$MODELS_ROOT_DIR/reranker/bge-reranker-v2-m3}"
 OCR_MODEL_ROOT_DIR="${OCR_MODEL_ROOT_DIR:-$MODELS_ROOT_DIR/ocr}"
