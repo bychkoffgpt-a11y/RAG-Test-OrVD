@@ -54,6 +54,24 @@
 - В ответе API (`/ask` и `/v1/chat/completions`) каждый элемент `sources` содержит поле `download_url`.
 - По ссылке вида `/sources/{source_type}/{doc_id}/download` можно скачать исходный документ, на который ссылается ответ.
 
+## Диагностика полного RAG-пути (trace)
+Для отладки качества ответов используйте скрипт:
+```bash
+python3 scripts/trace_rag_pipeline.py \
+  --api-url http://localhost:8000 \
+  --question "Почему не обработались записи по UHOP?" \
+  --image-path /data/runtime_uploads/image1.png \
+  --top-k 8 \
+  --scope all \
+  --write-markdown
+```
+
+Скрипт сохраняет отчёт в `data/rag_traces/` и показывает:
+- как распознаны вложенные изображения (`visual_evidence`);
+- какие кандидаты найдены в Qdrant и что прошло фильтрацию;
+- какой итоговый prompt был собран перед отправкой в LLM;
+- какой ответ вернул `/ask`.
+
 ## Предварительные требования
 Перед запуском убедитесь, что в текущем shell доступны Docker и Docker Compose v2:
 
