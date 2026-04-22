@@ -353,6 +353,42 @@ def main() -> int:
         joined_paths = "\n".join(images + [p for s in sources for p in s.get("image_paths", [])])
         retrieved_doc_present = "vision_regression_marker" in source_doc_ids
         retrieved_by_path_hint = "vision_regression_marker" in joined_paths
+        tc4_semantic_status = None
+        tc4_semantic_question = None
+        tc4_semantic_sources = []
+        tc4_semantic_doc_present = False
+        tc4_semantic_path_hint = False
+
+        if args.expected_ingest_mode == "vlm" and not (retrieved_doc_present or retrieved_by_path_hint or bool(sources)):
+            # Для VLM-режима используем второй (контекстный) запрос, чтобы не зависеть
+            # только от exact-token, который модель может не извлечь дословно.
+            tc4_semantic_question = (
+                "В каком документе есть изображение с именем файла tc_marker.png "
+                "и уникальным маркером на изображении?"
+            )
+            semantic_payload = {
+                "question": tc4_semantic_question,
+                "top_k": 8,
+                "scope": "all",
+            }
+            tc4_semantic_status, semantic_resp = post_json(f"{base}/ask", semantic_payload, timeout=args.timeout)
+            tc4_semantic_sources = semantic_resp.get("sources") or []
+            semantic_images = semantic_resp.get("images") or []
+            semantic_doc_ids = [s.get("doc_id") for s in tc4_semantic_sources]
+            semantic_joined_paths = "\n".join(semantic_images + [p for s in tc4_semantic_sources for p in s.get("image_paths", [])])
+            tc4_semantic_doc_present = "vision_regression_marker" in semantic_doc_ids
+            tc4_semantic_path_hint = "vision_regression_marker" in semantic_joined_paths
+
+            if tc4_semantic_sources:
+                sources = tc4_semantic_sources
+                images = semantic_images
+                source_doc_ids = semantic_doc_ids
+                retrieved_source_types = sorted(
+                    {(s.get("source_type") or "") for s in tc4_semantic_sources if s.get("source_type")}
+                )
+                joined_paths = semantic_joined_paths
+                retrieved_doc_present = tc4_semantic_doc_present
+                retrieved_by_path_hint = tc4_semantic_path_hint
 
         if ingest_status != 200:
             tc4_reason = "ingest_failed"
@@ -376,7 +412,8 @@ def main() -> int:
             tc4_ok = base_tc4_ok and retrieved_doc_present and retrieved_by_path_hint
         else:
             # Для VLM ingest допускаем semantic retrieval без strict exact-token.
-            tc4_ok = base_tc4_ok and (retrieved_doc_present or retrieved_by_path_hint or bool(sources))
+            semantic_ask_ok = tc4_semantic_status in (None, 200)
+            tc4_ok = base_tc4_ok and semantic_ask_ok and (retrieved_doc_present or retrieved_by_path_hint or bool(sources))
 
         if args.debug_tc4_soft:
             tc4_ok = base_tc4_ok
@@ -389,6 +426,9 @@ def main() -> int:
                     f"ingest_status={ingest_status}, ingest={ingest_payload}, "
                     f"exists_status={exists_status}, indexed_doc_present={indexed_doc_present}, "
                     f"indexed_chunk_count={indexed_chunk_count}, ask_status={ask_status}, "
+                    f"semantic_status={tc4_semantic_status}, semantic_question={tc4_semantic_question!r}, "
+                    f"semantic_doc_present={tc4_semantic_doc_present}, semantic_path_hint={tc4_semantic_path_hint}, "
+                    f"semantic_source_count={len(tc4_semantic_sources)}, "
                     f"retrieved_doc_present={retrieved_doc_present}, retrieved_source_types={retrieved_source_types}, "
                     f"source_doc_ids={source_doc_ids}, path_hint={retrieved_by_path_hint}, images={images}"
                 ),

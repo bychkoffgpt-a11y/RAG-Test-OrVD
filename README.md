@@ -347,6 +347,8 @@ python3 scripts/run_vision_regression.py --expected-runtime-mode vlm --expected-
 - `TC-04` зависит от `--expected-ingest-mode`:
   - `ocr`: strict retrieval маркерного документа (`vision_regression_marker`);
   - `vlm`: semantic retrieval (ослабленная проверка, без обязательного exact-token).
+    Скрипт сначала пробует token-query, а при пустом результате делает
+    дополнительный VLM-friendly запрос с контекстом `tc_marker.png`.
 
 ## Проверка корректности распознавания через VLM
 Добавлен отдельный smoke-скрипт `scripts/run_vlm_recognition_checks.py`, который:
