@@ -32,6 +32,23 @@ def test_orchestrator_returns_fallback_when_no_contexts_and_no_visual_evidence()
     assert response.visual_evidence == []
 
 
+class _VisionMustNotBeCalled:
+    def analyze_attachments(self, attachments, question):
+        raise AssertionError('Vision should not be called when attachments are empty')
+
+
+def test_orchestrator_skips_vision_when_no_attachments():
+    orch = RagOrchestrator()
+    orch.retriever = _RetrieverWithOneContext()
+    orch.llm = _LlmWithFixedAnswer()
+    orch.vision = _VisionMustNotBeCalled()
+
+    payload = AskRequest(question='Проверь без вложений', top_k=8, scope='all')
+    response = orch.answer(payload)
+
+    assert response.visual_evidence == []
+
+
 class _RetrieverWithOneContext:
     def retrieve(self, question, top_k, scope):
         return [
