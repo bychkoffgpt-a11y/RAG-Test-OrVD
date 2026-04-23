@@ -1,3 +1,5 @@
+import time
+
 import httpx
 from fastapi import APIRouter, HTTPException
 from src.api.schemas import AskRequest, AskResponse
@@ -9,8 +11,12 @@ orch = RagOrchestrator()
 
 @router.post('', response_model=AskResponse)
 def ask(payload: AskRequest) -> AskResponse:
+    started = time.perf_counter()
     try:
-        return orch.answer(payload)
+        try:
+            return orch.answer(payload, endpoint='/ask', pre_processing_sec=time.perf_counter() - started)
+        except TypeError:
+            return orch.answer(payload)
     except httpx.TimeoutException as exc:
         raise HTTPException(status_code=504, detail='Таймаут запроса к LLM backend') from exc
     except httpx.HTTPError as exc:

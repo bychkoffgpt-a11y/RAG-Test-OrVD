@@ -76,6 +76,31 @@ python3 scripts/trace_rag_pipeline.py \
 - какой итоговый prompt был собран перед отправкой в LLM;
 - какой ответ вернул `/ask`.
 
+Для повторяемого профилирования latency и сравнения baseline/candidate используйте:
+```bash
+# baseline (например при VISION_RUNTIME_MODE=ocr)
+scripts/profile_latency.sh \
+  --api-url http://localhost:8000 \
+  --question "Почему не обработались записи по UHOP?" \
+  --iterations 5 \
+  --profile-name baseline_ocr
+
+# candidate (например при VISION_RUNTIME_MODE=vlm) + сравнение с baseline
+scripts/profile_latency.sh \
+  --api-url http://localhost:8000 \
+  --question "Почему не обработались записи по UHOP?" \
+  --image-path /data/runtime_uploads/image1.png \
+  --iterations 5 \
+  --profile-name candidate_vlm \
+  --compare-with data/rag_traces/profiles/baseline_ocr
+```
+
+Скрипт формирует `summary.json` и `summary.md` с p50/p95/max по:
+- `ask_latency_sec`;
+- оценке этапов orchestrator (vision/retrieval/prompt);
+- дельтам относительно baseline.  
+Это позволяет проверить гипотезу, что `VISION_RUNTIME_MODE=vlm` деградирует latency на текущем GPU.
+
 ## Предварительные требования
 Перед запуском убедитесь, что в текущем shell доступны Docker и Docker Compose v2:
 

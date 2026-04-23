@@ -493,6 +493,31 @@ docker compose logs -f support-api | rg -n "rag_|retriever_|qdrant_|embedding_mo
 - Есть `rag_prompt_built`, но нет `rag_llm_finished` — зависание на LLM (`llm-server`).
 - `retriever_collection_failed` — проблемы с Qdrant/коллекцией.
 
+Дополнительно теперь пишется агрегированный лог `rag_pipeline_profile` с длительностями этапов:
+- `stage_pre_processing_sec`
+- `stage_vision_sec`
+- `stage_retrieval_sec`
+- `stage_prompt_build_sec`
+- `stage_llm_generation_sec`
+- `stage_post_formatting_sec`
+- `stage_total_sec`
+
+Это позволяет быстро подтвердить/опровергнуть гипотезу «узкое место в VLM».
+
+### 3.1) Проверить фазовые метрики через Prometheus endpoint
+```bash
+curl -sS http://localhost:8000/metrics | rg "rag_stage_duration_seconds"
+```
+
+Лейблы метрики:
+- `endpoint` (`/ask` или `/v1/chat/completions`);
+- `stage` (`pre_processing`, `vision`, `retrieval`, `prompt_build`, `llm_generation`, `post_formatting`, `total`);
+- `has_attachments` (`0|1`);
+- `scope`;
+- `vision_mode` (`ocr|vlm`).
+
+Сравнивайте p95 `stage="vision"` между `vision_mode="ocr"` и `vision_mode="vlm"`.
+
 ### 4) Проверить доступность llama.cpp server и Qdrant
 ```bash
 curl -sS http://localhost:8080/health
@@ -517,6 +542,32 @@ curl -N -sS http://localhost:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"local-rag-model","stream":true,"messages":[{"role":"user","content":"Кто ты?"}]}'
 ```
+
+## Профилирование latency: baseline vs candidate
+
+Для повторяемого сравнения (например, `VISION_RUNTIME_MODE=ocr` против `VISION_RUNTIME_MODE=vlm`) используйте:
+```bash
+# baseline
+scripts/profile_latency.sh \
+  --api-url http://localhost:8000 \
+  --question "Почему не обработались записи по UHOP?" \
+  --iterations 5 \
+  --profile-name baseline_ocr
+
+# candidate + сравнение с baseline
+scripts/profile_latency.sh \
+  --api-url http://localhost:8000 \
+  --question "Почему не обработались записи по UHOP?" \
+  --image-path /data/runtime_uploads/image1.png \
+  --iterations 5 \
+  --profile-name candidate_vlm \
+  --compare-with data/rag_traces/profiles/baseline_ocr
+```
+
+Артефакты:
+- `data/rag_traces/profiles/<name>/summary.json` — машинно-читаемый итог;
+- `data/rag_traces/profiles/<name>/summary.md` — p50/p95/max и дельты к baseline;
+- `data/rag_traces/profiles/<name>/runs/run_*/trace_*.json` — детальные трейс-данные по каждому запуску.
 
 Ожидаемо: в ответе идут несколько строк `data: ...`, последняя — `data: [DONE]`.
 

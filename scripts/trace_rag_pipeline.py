@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,7 @@ def _post_json(url: str, payload: dict[str, Any], timeout: float) -> tuple[int, 
 IN_CONTAINER_TRACE_CODE = r"""
 import base64
 import json
+import time
 from src.api.schemas import AttachmentItem
 from src.core.settings import settings
 from src.embeddings.client import EmbeddingClient
@@ -60,10 +62,14 @@ image_path = str(payload.get("image_path") or "").strip()
 attachments = [AttachmentItem(image_path=image_path)] if image_path else []
 
 vision = VisionService()
+vision_started = time.perf_counter()
 visual = [v.model_dump() for v in vision.analyze_attachments(attachments, question)]
+vision_duration = time.perf_counter() - vision_started
 
 qdr = QdrantRepo()
+embedding_started = time.perf_counter()
 query_vector = EmbeddingClient.embed(question)
+embedding_duration = time.perf_counter() - embedding_started
 
 collections = []
 if scope in ("all", "csv_ans_docs"):
@@ -74,6 +80,7 @@ if scope in ("all", "internal_regulations"):
 candidate_limit = max(top_k, top_k * settings.retrieval_candidate_pool_multiplier)
 raw_by_collection = {}
 results = []
+retrieval_started = time.perf_counter()
 for coll in collections:
     rows = qdr.search(coll, query_vector, candidate_limit)
     view = []
@@ -92,7 +99,9 @@ for coll in collections:
         view.append(item)
         results.append(dict(item))
     raw_by_collection[coll] = view
+retrieval_duration = time.perf_counter() - retrieval_started
 
+rerank_started = time.perf_counter()
 if settings.retrieval_use_reranker and results:
     rerank_scores = RerankerClient.rerank(question, [item["text_preview"] for item in results])
     for item, score in zip(results, rerank_scores):
@@ -100,6 +109,7 @@ if settings.retrieval_use_reranker and results:
     results.sort(key=lambda x: x["rerank_score"] if x["rerank_score"] is not None else x["score"], reverse=True)
 else:
     results.sort(key=lambda x: x["score"], reverse=True)
+rerank_duration = time.perf_counter() - rerank_started
 
 deduped = []
 seen = set()
@@ -118,7 +128,9 @@ for item in deduped:
     filtered.append(item)
 
 contexts = filtered[:top_k]
+prompt_started = time.perf_counter()
 prompt = build_prompt(question, contexts, visual_evidence=visual)
+prompt_duration = time.perf_counter() - prompt_started
 
 out = {
     "settings_snapshot": {
@@ -126,6 +138,7 @@ out = {
         "retrieval_min_score": settings.retrieval_min_score,
         "retrieval_candidate_pool_multiplier": settings.retrieval_candidate_pool_multiplier,
         "vision_runtime_mode": settings.vision_runtime_mode,
+        "vision_model_device": settings.vision_model_device,
     },
     "input": {
         "question": question,
@@ -141,6 +154,14 @@ out = {
         "deduped_count": len(deduped),
         "filtered_count": len(filtered),
         "contexts_used_for_prompt": contexts,
+    },
+    "timings_sec": {
+        "vision": vision_duration,
+        "embedding": embedding_duration,
+        "retrieval": retrieval_duration,
+        "rerank": rerank_duration,
+        "prompt_build": prompt_duration,
+        "in_container_total": vision_duration + embedding_duration + retrieval_duration + rerank_duration + prompt_duration,
     },
     "final_prompt": prompt,
 }
@@ -247,7 +268,9 @@ def main() -> int:
         ask_payload["attachments"] = [{"image_path": args.image_path.strip()}]
 
     base = args.api_url.rstrip("/")
+    ask_started = time.perf_counter()
     ask_status, ask_response = _post_json(f"{base}/ask", ask_payload, timeout=args.timeout)
+    ask_duration = time.perf_counter() - ask_started
 
     trace_input = {
         "question": args.question,
@@ -269,6 +292,14 @@ def main() -> int:
             "response": ask_response,
         },
         "pipeline_trace": in_container_trace,
+        "runtime_profile": {
+            "ask_latency_sec": ask_duration,
+            "orchestrator_total_sec": in_container_trace.get("timings_sec", {}).get("in_container_total"),
+            "orchestrator_vision_sec": in_container_trace.get("timings_sec", {}).get("vision"),
+            "orchestrator_retrieval_sec": in_container_trace.get("timings_sec", {}).get("retrieval"),
+            "orchestrator_llm_generation_sec": 0.0,
+            "orchestrator_prompt_build_sec": in_container_trace.get("timings_sec", {}).get("prompt_build"),
+        },
     }
 
     json_path = out_dir / f"trace_{ts}.json"
