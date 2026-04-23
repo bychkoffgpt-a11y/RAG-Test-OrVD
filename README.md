@@ -116,6 +116,11 @@ docker compose up -d
 - `--mode offline` (по умолчанию): `preflight_check.sh` проверяет, что `app/wheels` содержит полный набор wheel для прямых и транзитивных зависимостей.
 - `--mode online`: пустой `app/wheels` допускается; если wheelhouse заполнен — он используется в приоритете, затем fallback на primary индекс (`PIP_INDEX_URL`) и mirror (`PIP_FALLBACK_INDEX_URL`).
 
+Docker auth для Yandex Container Registry при `update_app.sh`:
+- если в `docker compose config --images` обнаружены образы `cr.yandex/*`, скрипт автоматически вызывает `yc container registry configure-docker` (режим `YC_DOCKER_AUTH=auto`, по умолчанию);
+- `YC_DOCKER_AUTH=1` — всегда пытаться выполнить auto-auth;
+- `YC_DOCKER_AUTH=0` — отключить auto-auth и использовать только ручной `docker login`/credential helper.
+
 Примеры:
 ```bash
 ./scripts/update_app.sh --mode offline
