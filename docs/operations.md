@@ -520,6 +520,145 @@ curl -N -sS http://localhost:8000/v1/chat/completions \
 
 Ожидаемо: в ответе идут несколько строк `data: ...`, последняя — `data: [DONE]`.
 
+### 7) Рекомендованный frontend-обработчик (защита от "вечного спиннера")
+Если backend отвечает быстро, а в UI остаётся бесконечная генерация, используйте единый обработчик с гарантированным сбросом `loading` и диагностическими логами.
+
+```ts
+type ChatMessage = { role: 'user' | 'assistant'; content: string };
+
+type ChatRequest = {
+  model: string;
+  messages: ChatMessage[];
+  stream: boolean;
+};
+
+function newRequestId(): string {
+  return crypto?.randomUUID?.() ?? `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export async function sendChatWithDiagnostics(
+  apiBaseUrl: string,
+  body: ChatRequest,
+  opts: {
+    setLoading: (value: boolean) => void;
+    onToken?: (chunk: string) => void;
+    onFinal: (text: string) => void;
+    onError: (message: string) => void;
+    timeoutMs?: number;
+  }
+) {
+  const requestId = newRequestId();
+  const timeoutMs = opts.timeoutMs ?? 90000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(`timeout_${timeoutMs}ms`), timeoutMs);
+
+  const t0 = performance.now();
+  opts.setLoading(true);
+  console.info('[chat] request_started', { requestId, stream: body.stream, timeoutMs });
+
+  try {
+    const response = await fetch(`${apiBaseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Request-ID': requestId,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    const backendRequestId = response.headers.get('x-request-id') ?? requestId;
+    console.info('[chat] response_headers', {
+      requestId,
+      backendRequestId,
+      status: response.status,
+      contentType: response.headers.get('content-type'),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`http_${response.status}: ${errorText.slice(0, 600)}`);
+    }
+
+    if (!body.stream) {
+      const data = await response.json();
+      const text = data?.choices?.[0]?.message?.content ?? '';
+      console.info('[chat] non_stream_completed', {
+        requestId,
+        backendRequestId,
+        chars: text.length,
+        sources: Array.isArray(data?.sources) ? data.sources.length : 0,
+      });
+      opts.onFinal(text);
+      return;
+    }
+
+    // stream=true (SSE)
+    if (!response.body) {
+      throw new Error('stream_body_missing');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuffer = '';
+    let finalText = '';
+    let doneSeen = false;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      sseBuffer += decoder.decode(value, { stream: true });
+
+      const events = sseBuffer.split('\n\n');
+      sseBuffer = events.pop() ?? '';
+
+      for (const rawEvent of events) {
+        const dataLine = rawEvent
+          .split('\n')
+          .find((line) => line.startsWith('data: '));
+        if (!dataLine) continue;
+
+        const payload = dataLine.slice('data: '.length).trim();
+        if (payload === '[DONE]') {
+          doneSeen = true;
+          console.info('[chat] stream_done_marker', { requestId, backendRequestId });
+          continue;
+        }
+
+        const parsed = JSON.parse(payload);
+        const token = parsed?.choices?.[0]?.delta?.content ?? '';
+        if (token) {
+          finalText += token;
+          opts.onToken?.(token);
+        }
+      }
+    }
+
+    if (!doneSeen) {
+      console.warn('[chat] stream_finished_without_done', { requestId, backendRequestId });
+    }
+    console.info('[chat] stream_completed', { requestId, backendRequestId, chars: finalText.length });
+    opts.onFinal(finalText);
+  } catch (error: any) {
+    console.error('[chat] request_failed', { requestId, error: String(error) });
+    opts.onError(String(error));
+  } finally {
+    clearTimeout(timeout);
+    opts.setLoading(false); // ключевая защита от "вечного спиннера"
+    console.info('[chat] request_finalized', {
+      requestId,
+      durationMs: Math.round(performance.now() - t0),
+    });
+  }
+}
+```
+
+Минимальный чеклист для UI:
+- всегда передавайте `X-Request-ID` и логируйте его в клиенте;
+- сравнивайте `X-Request-ID` из ответа backend с исходным request id;
+- при `stream=true` обязательно обрабатывайте `data: [DONE]`;
+- в `finally` всегда делайте `setLoading(false)` даже при `AbortError`, JSON-ошибке или 5xx.
+
 ## Проверка модельных артефактов перед запуском
 - Проверить наличие LLM: `test -f models/llm/qwen2.5-7b-instruct-q4_k_m.gguf && echo OK`
 - Проверить embeddings: `test -f models/embeddings/bge-m3/config.json && echo OK`

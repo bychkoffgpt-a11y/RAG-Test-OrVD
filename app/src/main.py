@@ -216,6 +216,14 @@ def metrics():
 
 @app.post('/v1/chat/completions')
 def openai_compat(payload: dict, request: Request):
+    logger.info(
+        'openai_compat_request_received',
+        extra={
+            'stream': payload.get('stream') is True,
+            'has_messages': isinstance(payload.get('messages'), list),
+            'messages_count': len(payload.get('messages', [])) if isinstance(payload.get('messages'), list) else 0,
+        },
+    )
     messages = payload.get('messages', [])
     question = ''
     attachments: list[AttachmentItem] = []
@@ -246,7 +254,9 @@ def openai_compat(payload: dict, request: Request):
     if not question.strip():
         if attachments:
             question = 'Опишите, что видно на скриншоте, и предложите решение проблемы.'
+            logger.info('openai_compat_question_fallback_used')
         else:
+            logger.warning('openai_compat_question_missing')
             return JSONResponse(status_code=400, content={'detail': 'Не удалось извлечь текст вопроса из messages.'})
 
     raw_max_tokens = payload.get('max_tokens')
@@ -279,9 +289,21 @@ def openai_compat(payload: dict, request: Request):
     is_stream = payload.get('stream') is True
 
     rendered_answer = append_sources_markdown(answer.answer, answer.sources, base_url=str(request.base_url))
+    logger.info(
+        'openai_compat_answer_ready',
+        extra={
+            'stream': is_stream,
+            'completion_id': completion_id,
+            'answer_chars': len(rendered_answer),
+            'sources_count': len(answer.sources),
+            'images_count': len(answer.images),
+            'visual_evidence_count': len(answer.visual_evidence),
+        },
+    )
 
     if is_stream:
         def event_stream():
+            logger.info('openai_compat_stream_started', extra={'completion_id': completion_id})
             first_chunk = {
                 'id': completion_id,
                 'object': 'chat.completion.chunk',
@@ -309,9 +331,11 @@ def openai_compat(payload: dict, request: Request):
             }
             yield f'data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n'
             yield 'data: [DONE]\n\n'
+            logger.info('openai_compat_stream_finished', extra={'completion_id': completion_id})
 
         return StreamingResponse(event_stream(), media_type='text/event-stream')
 
+    logger.info('openai_compat_non_stream_response_sent', extra={'completion_id': completion_id})
     return {
         'id': completion_id,
         'object': 'chat.completion',
