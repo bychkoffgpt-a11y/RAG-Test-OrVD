@@ -4,6 +4,7 @@ MODE="offline"
 FORCE_BUILD=0
 ONLINE_STRICT_WHEELS=0
 FILES_ONLY=0
+YC_DOCKER_AUTH="${YC_DOCKER_AUTH:-auto}"
 PIP_INDEX_URL_VALUE="${PIP_INDEX_URL:-https://pypi.org/simple}"
 PIP_FALLBACK_INDEX_URL_VALUE="${PIP_FALLBACK_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 DEBIAN_MIRROR_VALUE="${DEBIAN_MIRROR:-https://mirror.yandex.ru/debian}"
@@ -26,6 +27,13 @@ Options:
   --allow-pypi-fallback
                 Явно разрешить fallback на PyPI в режиме online (по умолчанию)
   -h, --help    Показать справку
+
+Environment:
+  YC_DOCKER_AUTH=auto|0|1
+                Авто-настройка Docker auth для cr.yandex/* через yc:
+                  auto (по умолчанию) — только когда в compose есть cr.yandex/*
+                  1                  — всегда пытаться настроить yc auth
+                  0                  — отключить авто-настройку
 USAGE
 }
 
@@ -57,6 +65,52 @@ require_clean_git_tree() {
 
   if ! git diff --cached --quiet --ignore-submodules --; then
     fail "Есть изменения в индексе (staged). Зафиксируйте их перед обновлением."
+  fi
+}
+
+compose_uses_yandex_registry() {
+  local images
+  images="$(docker compose config --images 2>/dev/null || true)"
+  [[ -n "$images" ]] || return 1
+  if echo "$images" | rg -q '^cr\.yandex/'; then
+    return 0
+  fi
+  return 1
+}
+
+ensure_yandex_registry_auth() {
+  local should_configure=0
+  case "$YC_DOCKER_AUTH" in
+    1) should_configure=1 ;;
+    0) should_configure=0 ;;
+    auto)
+      if compose_uses_yandex_registry; then
+        should_configure=1
+      fi
+      ;;
+    *)
+      warn "Неизвестное значение YC_DOCKER_AUTH=${YC_DOCKER_AUTH}. Использую auto."
+      if compose_uses_yandex_registry; then
+        should_configure=1
+      fi
+      ;;
+  esac
+
+  if [[ "$should_configure" -ne 1 ]]; then
+    log "Пропускаю авто-настройку yc docker auth (YC_DOCKER_AUTH=${YC_DOCKER_AUTH})"
+    return 0
+  fi
+
+  if ! command -v yc >/dev/null 2>&1; then
+    warn "yc CLI не найден. Выполните авторизацию вручную: 'yc init' и 'yc container registry configure-docker'"
+    return 0
+  fi
+
+  log "Настраиваю Docker auth для Yandex Container Registry (yc container registry configure-docker)..."
+  if yc container registry configure-docker >/dev/null; then
+    ok "Docker auth для cr.yandex настроен"
+  else
+    warn "Не удалось выполнить yc container registry configure-docker. Продолжаю, но pull/build может завершиться ошибкой доступа."
   fi
 }
 
@@ -216,6 +270,8 @@ if [[ -x "./scripts/preflight_check.sh" ]]; then
 else
   warn "preflight_check.sh не найден/не исполняемый, пропускаю проверку"
 fi
+
+ensure_yandex_registry_auth
 
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
