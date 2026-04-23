@@ -38,6 +38,10 @@
 - `VISION_MODEL_DEVICE=auto|cpu|cuda`
 - `VISION_MODEL_DTYPE=auto|float32|float16|bfloat16`
 - `VISION_MODEL_MAX_NEW_TOKENS=160`
+- `VISION_RUNTIME_TIMEOUT_SEC=120` — общий timeout runtime vision stage (`/ask`, `/v1/chat/completions`), `0` отключает ограничение.
+- `VISION_RUNTIME_MAX_IMAGES=3` — лимит количества изображений в одном runtime-запросе, `0` отключает ограничение.
+- `VISION_RUNTIME_MAX_IMAGE_PIXELS=4194304` — лимит пикселей (`width*height`) на одно runtime-изображение, `0` отключает ограничение.
+- `VISION_RUNTIME_PRELOAD=true` — preload runtime vision-модели на startup для снижения cold-start latency.
 - `VISION_MODEL_PROMPT_RUNTIME=...`
 - `VISION_MODEL_PROMPT_INGEST=...`
 

@@ -23,6 +23,7 @@ from src.core.settings import settings
 from src.rag.answer_formatter import append_sources_markdown
 from src.rag.orchestrator import RagOrchestrator
 from src.telemetry.metrics import HTTP_LATENCY, HTTP_REQUESTS, metrics_response
+from src.vision.service import VisionService
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -34,6 +35,11 @@ app.include_router(ingest_b_router)
 app.include_router(sources_router)
 
 orch = RagOrchestrator()
+
+
+@app.on_event('startup')
+def preload_vision_runtime_models() -> None:
+    VisionService.preload_runtime_models()
 
 
 def _resolve_path_alias(path: str) -> str:

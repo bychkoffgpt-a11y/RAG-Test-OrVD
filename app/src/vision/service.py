@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Iterable
@@ -20,6 +21,7 @@ class VisionService:
     _vlm_model = None
     _vlm_device = 'cpu'
     _vlm_init_failed = False
+    _vlm_init_lock = threading.Lock()
 
     @staticmethod
     def _build_paddle_ocr(*, model_root: str | None):
@@ -72,18 +74,42 @@ class VisionService:
 
         runtime_mode = self._resolve_mode(for_ingest=False)
         started = time.perf_counter()
-        items = list(attachments)
+        items = self._apply_runtime_limits(list(attachments))
+        timeout_sec = max(float(settings.vision_runtime_timeout_sec), 0.0)
+        deadline = started + timeout_sec if timeout_sec > 0 else None
         logger.info(
             'vision_request_received',
-            extra={'images': len(items), 'question_length': len(question), 'mode': runtime_mode},
+            extra={
+                'images': len(items),
+                'question_length': len(question),
+                'mode': runtime_mode,
+                'timeout_sec': timeout_sec,
+            },
         )
 
         evidence: list[VisionEvidenceItem] = []
         for attachment in items:
+            if deadline is not None and time.perf_counter() >= deadline:
+                logger.warning(
+                    'vision_request_timeout',
+                    extra={
+                        'timeout_sec': timeout_sec,
+                        'processed_images': len(evidence),
+                        'requested_images': len(items),
+                    },
+                )
+                break
             image_path = attachment.image_path.strip()
             if not image_path:
                 continue
-            evidence.append(self._analyze_single_image(image_path, question=question, mode=runtime_mode))
+            evidence.append(
+                self._analyze_single_image(
+                    image_path,
+                    question=question,
+                    mode=runtime_mode,
+                    deadline=deadline,
+                )
+            )
 
         logger.info(
             'vision_request_finished',
@@ -109,6 +135,7 @@ class VisionService:
                 image_path,
                 question=settings.vision_model_prompt_ingest,
                 mode=ingest_mode,
+                deadline=None,
             )
             summary = self._build_summary(image_path, extracted_text, mode=ingest_mode)
             body_label = 'OCR' if ingest_mode == 'ocr' else 'VLM'
@@ -128,9 +155,28 @@ class VisionService:
             )
         return chunks
 
-    def _analyze_single_image(self, image_path: str, *, question: str, mode: str) -> VisionEvidenceItem:
+    def _analyze_single_image(self, image_path: str, *, question: str, mode: str, deadline: float | None) -> VisionEvidenceItem:
         started = time.perf_counter()
-        extracted_text = self._extract_image_text_or_caption(image_path, question=question, mode=mode)
+        pixels_limit = int(settings.vision_runtime_max_image_pixels)
+        if pixels_limit > 0 and self._image_exceeds_pixels_limit(image_path, max_pixels=pixels_limit):
+            logger.warning(
+                'vision_image_skipped_too_large',
+                extra={
+                    'image_path': image_path,
+                    'max_pixels': pixels_limit,
+                },
+            )
+            return VisionEvidenceItem(
+                image_path=image_path,
+                ocr_text='',
+                summary=(
+                    f'Изображение пропущено: превышен лимит VISION_RUNTIME_MAX_IMAGE_PIXELS={pixels_limit}. '
+                    'Уменьшите изображение или увеличьте лимит.'
+                ),
+                confidence=0.0,
+            )
+
+        extracted_text = self._extract_image_text_or_caption(image_path, question=question, mode=mode, deadline=deadline)
         summary = self._build_summary(image_path, extracted_text, mode=mode)
         confidence = self._estimate_confidence(extracted_text)
         ocr_text = extracted_text if mode == 'ocr' else ''
@@ -165,10 +211,42 @@ class VisionService:
             return 'ocr'
         return mode
 
-    def _extract_image_text_or_caption(self, image_path: str, *, question: str, mode: str) -> str:
+    def _extract_image_text_or_caption(
+        self,
+        image_path: str,
+        *,
+        question: str,
+        mode: str,
+        deadline: float | None = None,
+    ) -> str:
         if mode == 'vlm':
-            return self._run_vlm(image_path, question=question)
+            return self._run_vlm(image_path, question=question, deadline=deadline)
         return self._run_ocr(image_path)
+
+    @staticmethod
+    def _apply_runtime_limits(items: list[AttachmentItem]) -> list[AttachmentItem]:
+        max_images = int(settings.vision_runtime_max_images)
+        if max_images > 0 and len(items) > max_images:
+            logger.warning(
+                'vision_runtime_max_images_exceeded',
+                extra={'requested_images': len(items), 'max_images': max_images},
+            )
+            return items[:max_images]
+        return items
+
+    @staticmethod
+    def _image_exceeds_pixels_limit(image_path: str, *, max_pixels: int) -> bool:
+        if max_pixels <= 0 or not Path(image_path).exists():
+            return False
+        try:
+            from PIL import Image
+
+            with Image.open(image_path) as image:
+                width, height = image.size
+            return (width * height) > max_pixels
+        except Exception:
+            logger.exception('vision_image_size_check_failed', extra={'image_path': image_path})
+            return False
 
     @classmethod
     def _get_ocr_client(cls):
@@ -279,43 +357,62 @@ class VisionService:
         if cls._vlm_processor is not None and cls._vlm_model is not None:
             return cls._vlm_processor, cls._vlm_model, cls._vlm_device
 
-        model_path = settings.vision_model_path
-        if not Path(model_path).exists():
-            logger.error('vision_vlm_model_path_missing', extra={'model_path': model_path})
-            cls._vlm_init_failed = True
-            return None
-        try:
-            import torch
-            from transformers import AutoModelForVision2Seq, AutoProcessor
+        with cls._vlm_init_lock:
+            if cls._vlm_processor is not None and cls._vlm_model is not None:
+                return cls._vlm_processor, cls._vlm_model, cls._vlm_device
+            model_path = settings.vision_model_path
+            if not Path(model_path).exists():
+                logger.error('vision_vlm_model_path_missing', extra={'model_path': model_path})
+                cls._vlm_init_failed = True
+                return None
+            try:
+                import torch
+                from transformers import AutoModelForVision2Seq, AutoProcessor
 
-            processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True, local_files_only=True)
-            torch_device = cls._resolve_vlm_device(torch)
-            torch_dtype = cls._resolve_vlm_dtype(torch)
+                processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True, local_files_only=True)
+                torch_device = cls._resolve_vlm_device(torch)
+                torch_dtype = cls._resolve_vlm_dtype(torch)
 
-            model = AutoModelForVision2Seq.from_pretrained(
-                model_path,
-                trust_remote_code=True,
-                local_files_only=True,
-                torch_dtype=torch_dtype,
-                device_map='auto' if torch_device == 'cuda' else None,
-            )
-            if torch_device == 'cpu':
-                model = model.to('cpu')
-            model.eval()
+                model = AutoModelForVision2Seq.from_pretrained(
+                    model_path,
+                    trust_remote_code=True,
+                    local_files_only=True,
+                    torch_dtype=torch_dtype,
+                    device_map='auto' if torch_device == 'cuda' else None,
+                )
+                if torch_device == 'cpu':
+                    model = model.to('cpu')
+                model.eval()
 
-            cls._vlm_processor = processor
-            cls._vlm_model = model
-            cls._vlm_device = torch_device
-            cls._vlm_init_failed = False
-            logger.info(
-                'vision_vlm_initialized',
-                extra={'model_path': model_path, 'device': torch_device, 'dtype': settings.vision_model_dtype},
-            )
-            return cls._vlm_processor, cls._vlm_model, cls._vlm_device
-        except Exception:
-            logger.exception('vision_vlm_init_failed', extra={'model_path': model_path})
-            cls._vlm_init_failed = True
-            return None
+                cls._vlm_processor = processor
+                cls._vlm_model = model
+                cls._vlm_device = torch_device
+                cls._vlm_init_failed = False
+                logger.info(
+                    'vision_vlm_initialized',
+                    extra={'model_path': model_path, 'device': torch_device, 'dtype': settings.vision_model_dtype},
+                )
+                return cls._vlm_processor, cls._vlm_model, cls._vlm_device
+            except Exception:
+                logger.exception('vision_vlm_init_failed', extra={'model_path': model_path})
+                cls._vlm_init_failed = True
+                return None
+
+    @classmethod
+    def preload_runtime_models(cls) -> None:
+        if not settings.vision_enabled or not settings.vision_runtime_preload:
+            return
+        runtime_mode = cls._resolve_mode(for_ingest=False)
+        started = time.perf_counter()
+        logger.info('vision_runtime_preload_started', extra={'mode': runtime_mode})
+        if runtime_mode == 'vlm':
+            cls._get_vlm_client()
+        else:
+            cls._get_ocr_client()
+        logger.info(
+            'vision_runtime_preload_finished',
+            extra={'mode': runtime_mode, 'duration_sec': round(time.perf_counter() - started, 3)},
+        )
 
     @staticmethod
     def _resolve_vlm_device(torch_module) -> str:
@@ -342,7 +439,7 @@ class VisionService:
             return torch_module.bfloat16
         return torch_module.float16 if torch_module.cuda.is_available() else torch_module.float32
 
-    def _run_vlm(self, image_path: str, *, question: str) -> str:
+    def _run_vlm(self, image_path: str, *, question: str, deadline: float | None) -> str:
         if not os.path.exists(image_path):
             logger.warning('vision_image_not_found', extra={'image_path': image_path})
             return ''
@@ -377,8 +474,15 @@ class VisionService:
             inputs = processor(text=[text], images=[image], return_tensors='pt', padding=True)
             if device == 'cuda':
                 inputs = {k: (v.to('cuda') if hasattr(v, 'to') else v) for k, v in inputs.items()}
+            generate_kwargs = {'max_new_tokens': settings.vision_model_max_new_tokens}
+            if deadline is not None:
+                remaining = deadline - time.perf_counter()
+                if remaining <= 0:
+                    logger.warning('vision_vlm_timeout_before_generate', extra={'image_path': image_path})
+                    return ''
+                generate_kwargs['max_time'] = remaining
             with torch.no_grad():
-                generated = model.generate(**inputs, max_new_tokens=settings.vision_model_max_new_tokens)
+                generated = model.generate(**inputs, **generate_kwargs)
             output = processor.batch_decode(generated, skip_special_tokens=True, clean_up_tokenization_spaces=True)
             result = (output[0] if output else '').strip()
             if result.startswith(text):
