@@ -222,6 +222,7 @@ def metrics():
 
 @app.post('/v1/chat/completions')
 def openai_compat(payload: dict, request: Request):
+    started = time.perf_counter()
     logger.info(
         'openai_compat_request_received',
         extra={
@@ -279,7 +280,16 @@ def openai_compat(payload: dict, request: Request):
 
     try:
         ask_payload = AskRequest(question=question, top_k=8, scope='all', attachments=attachments)
-        answer = orch.answer(ask_payload, max_tokens=max_tokens, temperature=temperature)
+        try:
+            answer = orch.answer(
+                ask_payload,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                endpoint='/v1/chat/completions',
+                pre_processing_sec=time.perf_counter() - started,
+            )
+        except TypeError:
+            answer = orch.answer(ask_payload, max_tokens=max_tokens, temperature=temperature)
     except ValidationError as exc:
         return JSONResponse(status_code=400, content={'detail': str(exc)})
     except httpx.TimeoutException:
