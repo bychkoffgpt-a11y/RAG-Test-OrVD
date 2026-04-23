@@ -74,6 +74,9 @@ OpenAI-compatible endpoint.
 Ограничения image-вложений:
 - максимальный размер: `VISION_ATTACHMENT_MAX_BYTES`;
 - разрешённые MIME-типы: `VISION_ATTACHMENT_ALLOWED_MIME_TYPES`.
+- лимит количества изображений в runtime-запросе: `VISION_RUNTIME_MAX_IMAGES` (`0` = без лимита);
+- лимит пикселей на изображение (`width*height`): `VISION_RUNTIME_MAX_IMAGE_PIXELS` (`0` = без лимита);
+- общий timeout runtime vision stage: `VISION_RUNTIME_TIMEOUT_SEC` (`0` = без лимита).
 
 Возвращает:
 - стандартное поле `choices`;

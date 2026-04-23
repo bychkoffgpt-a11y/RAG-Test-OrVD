@@ -94,7 +94,7 @@ def test_runtime_mode_vlm_uses_vlm_extractor(monkeypatch, tmp_path):
     image.write_bytes(b'fake')
     service = VisionService()
     monkeypatch.setattr('src.vision.service.settings.vision_runtime_mode', 'vlm', raising=False)
-    monkeypatch.setattr(service, '_run_vlm', lambda path, question: 'Detected app error screen')
+    monkeypatch.setattr(service, '_run_vlm', lambda path, question, deadline=None: 'Detected app error screen')
     ocr_mock = Mock()
     monkeypatch.setattr(service, '_run_ocr', ocr_mock)
 
@@ -109,7 +109,7 @@ def test_runtime_mode_vlm_uses_vlm_extractor(monkeypatch, tmp_path):
 def test_ingest_mode_vlm_builds_vlm_chunks(monkeypatch):
     service = VisionService()
     monkeypatch.setattr('src.vision.service.settings.vision_ingest_mode', 'vlm', raising=False)
-    monkeypatch.setattr(service, '_run_vlm', lambda path, question: 'Screenshot of settings panel')
+    monkeypatch.setattr(service, '_run_vlm', lambda path, question, deadline=None: 'Screenshot of settings panel')
     ocr_mock = Mock()
     monkeypatch.setattr(service, '_run_ocr', ocr_mock)
 
@@ -123,3 +123,40 @@ def test_ingest_mode_vlm_builds_vlm_chunks(monkeypatch):
     assert 'VLM:' in chunks[0]['text']
     assert 'Screenshot of settings panel' in chunks[0]['text']
     ocr_mock.assert_not_called()
+
+
+def test_analyze_attachments_respects_runtime_max_images(monkeypatch, tmp_path):
+    img1 = tmp_path / 'one.png'
+    img2 = tmp_path / 'two.png'
+    img1.write_bytes(b'fake')
+    img2.write_bytes(b'fake')
+
+    service = VisionService()
+    monkeypatch.setattr('src.vision.service.settings.vision_runtime_max_images', 1, raising=False)
+    monkeypatch.setattr(service, '_run_ocr', lambda path: f'OCR:{Path(path).name}')
+
+    evidence = service.analyze_attachments(
+        [AttachmentItem(image_path=str(img1)), AttachmentItem(image_path=str(img2))],
+        question='Проверь',
+    )
+
+    assert len(evidence) == 1
+    assert evidence[0].image_path == str(img1)
+
+
+def test_analyze_single_image_skips_large_image(monkeypatch, tmp_path):
+    image = tmp_path / 'large.png'
+    image.write_bytes(b'fake')
+
+    service = VisionService()
+    monkeypatch.setattr('src.vision.service.settings.vision_runtime_max_image_pixels', 10, raising=False)
+    monkeypatch.setattr(service, '_image_exceeds_pixels_limit', lambda *_args, **_kwargs: True)
+    run_ocr_mock = Mock()
+    monkeypatch.setattr(service, '_run_ocr', run_ocr_mock)
+
+    evidence = service.analyze_attachments([AttachmentItem(image_path=str(image))], question='Проверь')
+
+    assert len(evidence) == 1
+    assert evidence[0].confidence == 0.0
+    assert 'превышен лимит' in evidence[0].summary
+    run_ocr_mock.assert_not_called()
