@@ -26,12 +26,16 @@ class RagOrchestrator:
         started = time.perf_counter()
 
         vision_started = time.perf_counter()
-        raw_visual = self.vision.analyze_attachments(payload.attachments, payload.question)
+        raw_visual = []
+        if payload.attachments:
+            raw_visual = self.vision.analyze_attachments(payload.attachments, payload.question)
         visual_evidence = [item.model_dump() if hasattr(item, 'model_dump') else dict(item) for item in raw_visual]
         logger.info(
             'rag_vision_finished',
             extra={
                 'visual_evidence': len(visual_evidence),
+                'attachments': len(payload.attachments),
+                'skipped': not bool(payload.attachments),
                 'duration_sec': round(time.perf_counter() - vision_started, 3),
             },
         )
