@@ -20,7 +20,7 @@ from src.api.schemas import AskRequest, AttachmentItem
 from src.core.logging import configure_logging
 from src.core.request_context import reset_request_id, set_request_id
 from src.core.settings import settings
-from src.rag.answer_formatter import append_sources_markdown
+from src.rag.answer_formatter import append_grounding_markdown, append_sources_markdown
 from src.rag.orchestrator import RagOrchestrator
 from src.telemetry.metrics import HTTP_LATENCY, HTTP_REQUESTS, metrics_response
 from src.vision.service import VisionService
@@ -294,7 +294,8 @@ def openai_compat(payload: dict, request: Request):
     model = payload.get('model', 'local-rag-model')
     is_stream = payload.get('stream') is True
 
-    rendered_answer = append_sources_markdown(answer.answer, answer.sources, base_url=str(request.base_url))
+    rendered_answer = append_grounding_markdown(answer.answer, answer.sources, base_url=str(request.base_url))
+    rendered_answer = append_sources_markdown(rendered_answer, answer.sources, base_url=str(request.base_url))
     logger.info(
         'openai_compat_answer_ready',
         extra={

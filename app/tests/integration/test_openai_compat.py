@@ -80,6 +80,7 @@ def test_chat_completions_non_stream_returns_200(monkeypatch):
     data = response.json()
     assert data['object'] == 'chat.completion'
     assert 'Тестовый ответ' in data['choices'][0]['message']['content']
+    assert 'Основание:' in data['choices'][0]['message']['content']
     assert 'Источники для скачивания' in data['choices'][0]['message']['content']
     assert '/sources/csv_ans_docs/doc-1/download' in data['choices'][0]['message']['content']
     assert data['visual_evidence'][0]['image_path'] == '/tmp/screen.png'
