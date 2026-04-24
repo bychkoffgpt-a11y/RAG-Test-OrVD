@@ -101,12 +101,14 @@ for coll in collections:
     view = []
     for row in rows:
         p = row.payload or {}
+        full_text = p.get("text", "") or ""
         item = {
             "doc_id": p.get("doc_id", "unknown"),
             "source_type": p.get("source_type", coll),
             "page_number": p.get("page_number"),
             "chunk_id": p.get("chunk_id", str(row.id)),
-            "text_preview": (p.get("text", "") or "")[:400],
+            "text": full_text,
+            "text_preview": full_text[:400],
             "image_paths": p.get("image_paths", []),
             "score": float(row.score),
             "rerank_score": None,
