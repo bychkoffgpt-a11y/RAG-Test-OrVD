@@ -169,6 +169,7 @@ docker compose version
 - Переменные `NVIDIA_VISIBLE_DEVICES=all` и `NVIDIA_DRIVER_CAPABILITIES=compute,utility` должны оставаться включёнными.
 - На старте контейнера больше не выполняется принудительное переключение на CPU: сервис сохраняет заданный `-ngl`, чтобы не ломать GPU-режим в окружениях, где CUDA доступна, но `/dev/nvidia*` определяется нестандартно.
 - Для сбора метрик Prometheus endpoint `/metrics` должен быть включён аргументом `--metrics` (по умолчанию через `LLM_SERVER_EXTRA_ARGS=--metrics`).
+- В `llm-server` по умолчанию включена санитизация логов (`LLM_LOG_SANITIZER=1`): она устраняет склейку timestamp-строк, убирает предупреждение о конфликте `LLAMA_ARG_HOST` и фильтрует известные шумовые артефакты llama.cpp (`unaccounted` overflow и `n_ctx_seq < n_ctx_train`).
 
 ### Диагностика `/metrics` для `llm-server`
 Если в логах `llm-server` повторяются записи `GET /metrics ... 501`, это обычно означает, что сервер запущен без `--metrics`.
