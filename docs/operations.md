@@ -436,6 +436,8 @@ CHUNK_STRATEGY_INTERNAL_REGULATIONS=regs
 - API health: `curl http://localhost:8000/health`
 - Список моделей (OpenAI-compatible): `curl http://localhost:8000/v1/models`
 - Метрики: `curl http://localhost:8000/metrics`
+- LLM server health: `curl http://localhost:8080/health`
+- LLM server metrics: `curl http://localhost:8080/metrics`
 - Qdrant: `curl http://localhost:6333/healthz`
 - Loki ready: `curl http://localhost:3100/ready`
 
@@ -521,9 +523,16 @@ curl -sS http://localhost:8000/metrics | rg "rag_stage_duration_seconds"
 ### 4) Проверить доступность llama.cpp server и Qdrant
 ```bash
 curl -sS http://localhost:8080/health
+curl -sS -i http://localhost:8080/metrics | head -n 20
 curl -sS http://localhost:6333/healthz
 docker compose logs --tail=200 llm-server
 docker compose logs --tail=200 qdrant
+```
+
+Если `http://localhost:8080/metrics` возвращает `501`, проверьте, что в `llm-server` передаётся аргумент `--metrics` (в проекте по умолчанию через `LLM_SERVER_EXTRA_ARGS=--metrics` в `.env`/`.env.example`), затем перезапустите контейнер:
+
+```bash
+docker compose up -d llm-server
 ```
 
 ### 5) Проверить корректность локальных артефактов embedding

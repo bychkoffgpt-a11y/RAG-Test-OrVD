@@ -44,7 +44,7 @@ services:
     networks: [rag_net]
 
   llm-server:
-    image: ${LLAMA_CPP_IMAGE:-ghcr.io/ggerganov/llama.cpp:server-cuda-b4719}
+    image: ${LLAMA_CPP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda}
     container_name: llm-server
     restart: unless-stopped
     entrypoint: ["/opt/llm_server_entrypoint.sh"]
@@ -57,6 +57,7 @@ services:
       --parallel ${LLM_PARALLEL:-2}
       --threads ${LLM_THREADS:-8}
       --cont-batching
+      ${LLM_SERVER_EXTRA_ARGS:---metrics}
     volumes:
       - ./models:/models:ro
       - ./scripts/llm_server_entrypoint.sh:/opt/llm_server_entrypoint.sh:ro

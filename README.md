@@ -115,6 +115,19 @@ docker compose version
 - В `docker-compose.yml` для `llm-server` обязательно задано `gpus: all` (нельзя полагаться только на `deploy.resources...`).
 - Переменные `NVIDIA_VISIBLE_DEVICES=all` и `NVIDIA_DRIVER_CAPABILITIES=compute,utility` должны оставаться включёнными.
 - На старте контейнера больше не выполняется принудительное переключение на CPU: сервис сохраняет заданный `-ngl`, чтобы не ломать GPU-режим в окружениях, где CUDA доступна, но `/dev/nvidia*` определяется нестандартно.
+- Для сбора метрик Prometheus endpoint `/metrics` должен быть включён аргументом `--metrics` (по умолчанию через `LLM_SERVER_EXTRA_ARGS=--metrics`).
+
+### Диагностика `/metrics` для `llm-server`
+Если в логах `llm-server` повторяются записи `GET /metrics ... 501`, это обычно означает, что сервер запущен без `--metrics`.
+
+Проверка:
+```bash
+docker compose exec llm-server sh -lc 'curl -sS -i http://127.0.0.1:8080/metrics | head -n 20'
+```
+
+Ожидаемо:
+- `HTTP/1.1 200 OK` и тело в Prometheus формате — экспорт метрик включён;
+- `HTTP/1.1 501` — нужно добавить `--metrics` (или `LLM_SERVER_EXTRA_ARGS=--metrics`) и перезапустить `llm-server`.
 
 ## Быстрый старт
 ```bash
