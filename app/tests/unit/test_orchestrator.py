@@ -6,6 +6,9 @@ class _NoContextRetriever:
     def retrieve(self, question, top_k, scope):
         return []
 
+    def retrieve_with_trace(self, question, top_k, scope):
+        return [], {'timings_sec': {'embedding': 0.0, 'retrieval': 0.0, 'rerank': 0.0, 'total': 0.0}}
+
 
 class _NeverCalledLlm:
     def generate(self, prompt, max_tokens=512, temperature=0.1):
@@ -63,9 +66,25 @@ class _RetrieverWithOneContext:
             }
         ]
 
+    def retrieve_with_trace(self, question, top_k, scope):
+        contexts = self.retrieve(question, top_k, scope)
+        return contexts, {
+            'query': {'question': question, 'scope': scope, 'top_k': top_k, 'candidate_limit': top_k},
+            'timings_sec': {'embedding': 0.001, 'retrieval': 0.002, 'rerank': 0.0, 'total': 0.003},
+            'raw_by_collection': {'csv_ans_docs': []},
+            'combined_sorted': contexts,
+            'deduped_count': len(contexts),
+            'filtered_count': len(contexts),
+            'returned_count': len(contexts),
+            'reranker': {'enabled': False, 'applied': False, 'min_score': 0.25},
+            'contexts_used_for_prompt': contexts,
+        }
+
 
 class _LlmWithFixedAnswer:
-    def generate(self, prompt, max_tokens=512, temperature=0.1):
+    def generate(self, prompt, max_tokens=512, temperature=0.1, trace=None):
+        if trace is not None:
+            trace["answer"] = "Тестовый ответ"
         return 'Тестовый ответ'
 
 
@@ -112,3 +131,26 @@ def test_orchestrator_uses_visual_evidence_from_attachments():
 
     assert response.visual_evidence
     assert response.visual_evidence[0].image_path == '/tmp/error.png'
+
+
+def test_orchestrator_writes_trace_card():
+    orch = RagOrchestrator()
+    orch.retriever = _RetrieverWithOneContext()
+    orch.llm = _LlmWithFixedAnswer()
+    orch.vision = _NoEvidenceVision()
+    captured = {}
+
+    class _TraceWriter:
+        def write(self, card):
+            captured["card"] = card
+            return {"json_path": "/tmp/a.json", "markdown_path": "/tmp/a.md"}
+
+    orch.trace_writer = _TraceWriter()
+
+    payload = AskRequest(question='Проверь трассировку', top_k=8, scope='all')
+    orch.answer(payload)
+
+    assert "card" in captured
+    assert captured["card"]["stages"]["prompt"]["final_prompt"]
+    assert captured["card"]["stages"]["retrieval"]["combined_sorted"]
+    assert captured["card"]["aggregate_timings_sec"]["total"] >= 0

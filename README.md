@@ -65,6 +65,25 @@
 - По ссылке вида `/sources/{source_type}/{doc_id}/download` можно скачать исходный документ, на который ссылается ответ.
 
 ## Диагностика полного RAG-пути (trace)
+### Автоматические trace-карточки на каждый UI/runtime запрос
+`support-api` автоматически создаёт отдельные trace-файлы для каждого запроса в `/ask` и `/v1/chat/completions` (включая запросы из Open WebUI).
+
+По умолчанию файлы пишутся в `/data/rag_traces/ui_requests/<YYYY>/<MM>/<DD>/`:
+- `<timestamp>_<request_id>.json` — полный машинно-читаемый trace;
+- `<timestamp>_<request_id>.md` — карточка для быстрого ручного анализа.
+
+Содержимое карточки включает:
+- входной payload (question/scope/top_k/attachments);
+- этапы vision (prompt + `visual_evidence`);
+- retrieval по коллекциям Qdrant (`raw_by_collection`, `combined_sorted`);
+- результаты reranker (score per chunk);
+- финальный prompt перед LLM и ответ;
+- агрегированные тайминги по этапам (`pre_processing`, `vision`, `embedding`, `vector_search`, `rerank`, `prompt_build`, `llm_generation`, `post_formatting`, `total`).
+
+Настройки:
+- `RAG_UI_TRACE_ENABLED=true|false` — включение/выключение автосоздания карточек;
+- `RAG_UI_TRACE_DIR=/data/rag_traces/ui_requests` — корневая директория trace-карточек.
+
 Для отладки качества ответов используйте скрипт:
 ```bash
 python3 scripts/trace_rag_pipeline.py \

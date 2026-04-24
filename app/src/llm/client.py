@@ -6,7 +6,13 @@ class LlmClient:
     def __init__(self) -> None:
         self.base_url = settings.llm_base_url
 
-    def generate(self, prompt: str, max_tokens: int = 512, temperature: float = 0.1) -> str:
+    def generate(
+        self,
+        prompt: str,
+        max_tokens: int = 512,
+        temperature: float = 0.1,
+        trace: dict | None = None,
+    ) -> str:
         timeout = httpx.Timeout(
             connect=settings.llm_connect_timeout_sec,
             read=settings.llm_read_timeout_sec,
@@ -34,6 +40,9 @@ class LlmClient:
         }
 
         chat_resp = httpx.post(f'{self.base_url}/v1/chat/completions', json=chat_payload, timeout=timeout)
+        if trace is not None:
+            trace['chat_payload'] = chat_payload
+            trace['chat_status_code'] = chat_resp.status_code
         if chat_resp.status_code < 400:
             chat_data = chat_resp.json()
             choices = chat_data.get('choices') or []
@@ -42,12 +51,17 @@ class LlmClient:
                 content = message.get('content')
                 if isinstance(content, str) and content.strip():
                     normalized = self._enforce_russian(content.strip(), max_tokens=max_tokens)
-                    return self._continue_if_truncated(
+                    final_answer = self._continue_if_truncated(
                         answer=normalized,
                         prompt=prompt,
                         max_tokens=max_tokens,
                         temperature=temperature,
+                        trace=trace,
                     )
+                    if trace is not None:
+                        trace['transport'] = 'chat_completions'
+                        trace['answer'] = final_answer
+                    return final_answer
 
         completion_payload = {
             'prompt': prompt,
@@ -58,15 +72,23 @@ class LlmClient:
             'stop': ['</s>'],
         }
         completion_resp = httpx.post(f'{self.base_url}/completion', json=completion_payload, timeout=timeout)
+        if trace is not None:
+            trace['completion_payload'] = completion_payload
+            trace['completion_status_code'] = completion_resp.status_code
         completion_resp.raise_for_status()
         completion_data = completion_resp.json()
         normalized = self._enforce_russian(completion_data.get('content', '').strip(), max_tokens=max_tokens)
-        return self._continue_if_truncated(
+        final_answer = self._continue_if_truncated(
             answer=normalized,
             prompt=prompt,
             max_tokens=max_tokens,
             temperature=temperature,
+            trace=trace,
         )
+        if trace is not None:
+            trace['transport'] = 'completion'
+            trace['answer'] = final_answer
+        return final_answer
 
     def _enforce_russian(self, answer: str, max_tokens: int) -> str:
         if not answer or self._looks_russian(answer):
@@ -114,7 +136,14 @@ class LlmClient:
         latin = sum(1 for ch in text if 'a' <= ch.lower() <= 'z')
         return cyrillic >= 8 and cyrillic >= latin
 
-    def _continue_if_truncated(self, answer: str, prompt: str, max_tokens: int, temperature: float) -> str:
+    def _continue_if_truncated(
+        self,
+        answer: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        trace: dict | None = None,
+    ) -> str:
         if not self._looks_truncated(answer):
             return answer
 
@@ -145,8 +174,12 @@ class LlmClient:
             'temperature': max(0.0, min(temperature, 0.2)),
             'stream': False,
         }
+        if trace is not None:
+            trace['continuation_payload'] = payload
         try:
             continuation_resp = httpx.post(f'{self.base_url}/v1/chat/completions', json=payload, timeout=timeout)
+            if trace is not None:
+                trace['continuation_status_code'] = continuation_resp.status_code
             if continuation_resp.status_code < 400:
                 continuation_data = continuation_resp.json()
                 choices = continuation_data.get('choices') or []
