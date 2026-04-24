@@ -61,6 +61,7 @@ services:
     volumes:
       - ./models:/models:ro
       - ./scripts/llm_server_entrypoint.sh:/opt/llm_server_entrypoint.sh:ro
+      - ./scripts/llm_log_sanitizer.py:/opt/llm_log_sanitizer.py:ro
     ports:
       - "8080:8080"
     gpus: all

@@ -1,6 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
+# Avoid duplicate host configuration warnings from llama-server.
+unset LLAMA_ARG_HOST || true
+
 LLM_N_GPU_LAYERS_VALUE="${LLM_N_GPU_LAYERS:-99}"
 
 case "${LLM_N_GPU_LAYERS_VALUE}" in
@@ -24,6 +27,12 @@ elif [ -x /app/llama-server ]; then
 else
   echo "ERROR: Unable to locate llama-server binary in container." >&2
   exit 67
+fi
+
+
+LOG_SANITIZER="${LLM_LOG_SANITIZER:-1}"
+if [ "${LOG_SANITIZER}" = "1" ] && [ -x /opt/llm_log_sanitizer.py ]; then
+  exec /opt/llm_log_sanitizer.py "${LLAMA_SERVER_BIN}" "$@"
 fi
 
 exec "${LLAMA_SERVER_BIN}" "$@"
