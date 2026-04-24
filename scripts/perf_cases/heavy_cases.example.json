@@ -1,0 +1,34 @@
+[
+  {
+    "name": "long_text_no_image",
+    "question_file": "scripts/perf_questions/long_enterprise_request.txt",
+    "question_repeat": 2,
+    "top_k": 8,
+    "scope": "all",
+    "iterations": 8,
+    "warmup_runs": 1,
+    "sleep_sec": 1.0
+  },
+  {
+    "name": "long_text_heavy_image",
+    "question_file": "scripts/perf_questions/long_enterprise_request.txt",
+    "question_repeat": 2,
+    "image_path": "/data/runtime_uploads/heavy_4k_screenshot.png",
+    "top_k": 8,
+    "scope": "all",
+    "iterations": 8,
+    "warmup_runs": 1,
+    "sleep_sec": 1.0
+  },
+  {
+    "name": "extra_long_heavy_image",
+    "question_file": "scripts/perf_questions/extra_long_cross_doc_request.txt",
+    "question_repeat": 2,
+    "image_path": "/data/runtime_uploads/heavy_8k_capture.png",
+    "top_k": 10,
+    "scope": "all",
+    "iterations": 10,
+    "warmup_runs": 2,
+    "sleep_sec": 1.5
+  }
+]

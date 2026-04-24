@@ -107,6 +107,34 @@ scripts/profile_latency.sh \
 - дельтам относительно baseline.  
 Это позволяет проверить гипотезу, что `VISION_RUNTIME_MODE=vlm` деградирует latency на текущем GPU.
 
+### Heavy performance suite (длинные запросы + тяжёлые изображения)
+Для нагрузочных сценариев с длинными вопросами и «тяжёлыми» скриншотами используйте:
+
+```bash
+python3 scripts/run_heavy_perf_suite.py \
+  --api-url http://localhost:8000 \
+  --cases-file scripts/perf_cases/heavy_cases.example.json
+```
+
+Сценарии задаются JSON-массивом, где можно управлять:
+- `question`/`question_file` + `question_repeat` (длина пользовательского запроса);
+- `image_path` (вложение внутри контейнера support-api);
+- `iterations`, `warmup_runs`, `top_k`, `scope`.
+
+После прогона создаётся каталог `data/rag_traces/heavy_suite/<timestamp>/`:
+- `suite_summary.json` — сырые результаты по всем кейсам;
+- `<case>/result.json` — детализация каждого кейса, включая дельты stage-метрик Prometheus.
+
+Для автоматического анализа и ранжирования bottleneck-ов:
+```bash
+python3 scripts/analyze_heavy_perf_suite.py \
+  --suite-dir data/rag_traces/heavy_suite/<timestamp>
+```
+
+Скрипт соберёт:
+- `analysis.md` — ranking кейсов по `ask p95` + stage breakdown;
+- `analysis.json` — машинно-читаемая сводка.
+
 ## Предварительные требования
 Перед запуском убедитесь, что в текущем shell доступны Docker и Docker Compose v2:
 
