@@ -38,3 +38,21 @@ def test_build_prompt_includes_question_and_contexts():
     assert 'HTTP 500 Internal Server Error' in prompt
     assert 'выводи все пункты полностью' in prompt
     assert 'Не добавляй в ответ блоки "Основание"' in prompt
+
+
+def test_build_prompt_accepts_text_preview_fallback():
+    prompt = build_prompt(
+        "Почему не обработались записи по UHOP?",
+        [
+            {
+                "text_preview": "Найдены ошибки валидации UHOP_BATCH",
+                "source_type": "csv_ans_docs",
+                "doc_id": "DOC-UHOP-1",
+                "chunk_id": "chunk-1",
+            }
+        ],
+    )
+
+    assert "Почему не обработались записи по UHOP?" in prompt
+    assert "Найдены ошибки валидации UHOP_BATCH" in prompt
+    assert "источник: csv_ans_docs/DOC-UHOP-1" in prompt

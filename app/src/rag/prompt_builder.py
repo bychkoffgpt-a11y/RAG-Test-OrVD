@@ -1,11 +1,17 @@
 def build_prompt(question: str, contexts: list[dict], visual_evidence: list[dict] | None = None) -> str:
     context_lines = []
     for idx, item in enumerate(contexts, start=1):
-        source_label = f"{item['source_type']}/{item['doc_id']}"
+        source_label = f"{item.get('source_type', 'unknown_source')}/{item.get('doc_id', 'unknown_doc')}"
         page_number = item.get('page_number')
         page_suffix = f", стр. {page_number}" if page_number is not None else ''
+        # Совместимость с диагностическими контекстами:
+        # основное поле retriever/orchestrator — `text`,
+        # в trace-отчётах может присутствовать только `text_preview`.
+        context_text = item.get('text')
+        if context_text is None:
+            context_text = item.get('text_preview', '')
         context_lines.append(
-            f"[{idx}] {item['text']} (источник: {source_label}{page_suffix})"
+            f"[{idx}] {context_text} (источник: {source_label}{page_suffix})"
         )
 
     evidence_lines = []
