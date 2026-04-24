@@ -206,7 +206,8 @@ async def metrics_middleware(request: Request, call_next):
         method = request.method
         HTTP_REQUESTS.labels(method=method, path=path, status=str(locals().get('status_code', 500))).inc()
         HTTP_LATENCY.labels(method=method, path=path).observe(duration)
-        logger.info('request completed', extra={'request_id': request_id})
+        if not (settings.suppress_metrics_request_logs and path == '/metrics'):
+            logger.info('request completed', extra={'request_id': request_id})
         reset_request_id(token)
 
 

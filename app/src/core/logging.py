@@ -7,6 +7,14 @@ from src.core.settings import settings
 from src.core.request_context import get_request_id
 
 
+class SuppressMetricsAccessFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3 and args[2] == '/metrics':
+            return False
+        return '"/metrics ' not in record.getMessage()
+
+
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload = {
@@ -47,3 +55,10 @@ def configure_logging() -> None:
 
     root.addHandler(stream_handler)
     root.addHandler(file_handler)
+
+    if settings.suppress_metrics_access_logs:
+        uvicorn_access_logger = logging.getLogger('uvicorn.access')
+        metrics_filter = SuppressMetricsAccessFilter()
+        uvicorn_access_logger.addFilter(metrics_filter)
+        for handler in uvicorn_access_logger.handlers:
+            handler.addFilter(metrics_filter)
