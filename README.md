@@ -54,6 +54,12 @@
 - Prometheus + Grafana (метрики)
 - Loki + Promtail (централизованные логи)
 
+## Снижение шума логов от `/metrics`
+- `SUPPRESS_METRICS_REQUEST_LOGS=true` — не писать JSON-событие `request completed` для `GET /metrics`.
+- `SUPPRESS_METRICS_ACCESS_LOGS=true` — фильтровать access-log uvicorn для `GET /metrics`.
+
+По умолчанию оба параметра включены, чтобы регулярный scrape Prometheus не засорял логи приложения.
+
 ## Ссылки на документы-основания
 - В ответе API (`/ask` и `/v1/chat/completions`) каждый элемент `sources` содержит поле `download_url`.
 - По ссылке вида `/sources/{source_type}/{doc_id}/download` можно скачать исходный документ, на который ссылается ответ.

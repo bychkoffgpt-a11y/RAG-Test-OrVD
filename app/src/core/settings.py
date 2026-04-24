@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     app_env: str = 'dev'
     app_name: str = 'CSV ANS Support API'
     log_level: str = 'INFO'
+    suppress_metrics_request_logs: bool = True
+    suppress_metrics_access_logs: bool = True
 
     postgres_dsn: str = 'postgresql://support_user:change_me_strong@localhost:5432/support'
     qdrant_url: str = 'http://localhost:6333'
