@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import base64
 import json
-import os
 import subprocess
 import sys
 import time
@@ -171,20 +170,20 @@ print(json.dumps(out, ensure_ascii=False))
 
 def _run_in_container_trace(input_payload: dict[str, Any]) -> dict[str, Any]:
     encoded = base64.b64encode(json.dumps(input_payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
-    env = os.environ.copy()
-    env["TRACE_INPUT_B64"] = encoded
 
     cmd = [
         "docker",
         "compose",
         "exec",
         "-T",
+        "-e",
+        f"TRACE_INPUT_B64={encoded}",
         "support-api",
         "python",
         "-c",
         IN_CONTAINER_TRACE_CODE,
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(
             "Не удалось выполнить трассировку внутри контейнера support-api.\n"
