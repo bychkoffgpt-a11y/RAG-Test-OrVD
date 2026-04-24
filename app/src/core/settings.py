@@ -75,5 +75,8 @@ class Settings(BaseSettings):
     llm_write_timeout_sec: float = 10.0
     llm_pool_timeout_sec: float = 5.0
 
+    rag_ui_trace_enabled: bool = True
+    rag_ui_trace_dir: str = '/data/rag_traces/ui_requests'
+
 
 settings = Settings()
