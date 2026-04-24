@@ -22,21 +22,37 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-def _post_json(url: str, payload: dict[str, Any], timeout: float) -> tuple[int, dict[str, Any]]:
+def _post_json(
+    url: str,
+    payload: dict[str, Any],
+    timeout: float,
+    *,
+    retries: int = 2,
+    retry_delay_sec: float = 1.0,
+) -> tuple[int, dict[str, Any]]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            status = resp.status
-            raw = resp.read().decode("utf-8")
-            parsed = json.loads(raw) if raw else {}
-            return status, parsed
-    except HTTPError as exc:
-        raw = exc.read().decode("utf-8") if exc.fp else ""
-        parsed = json.loads(raw) if raw else {"detail": raw or str(exc)}
-        return exc.code, parsed
-    except URLError as exc:
-        raise RuntimeError(f"Ошибка HTTP-запроса {url}: {exc}") from exc
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                status = resp.status
+                raw = resp.read().decode("utf-8")
+                parsed = json.loads(raw) if raw else {}
+                return status, parsed
+        except HTTPError as exc:
+            raw = exc.read().decode("utf-8") if exc.fp else ""
+            parsed = json.loads(raw) if raw else {"detail": raw or str(exc)}
+            return exc.code, parsed
+        except URLError as exc:
+            if attempt <= retries:
+                time.sleep(retry_delay_sec)
+                continue
+            raise RuntimeError(
+                f"Ошибка HTTP-запроса {url}: {exc}. "
+                "Проверьте, что support-api поднят и отвечает на /health."
+            ) from exc
 
 
 IN_CONTAINER_TRACE_CODE = r"""
