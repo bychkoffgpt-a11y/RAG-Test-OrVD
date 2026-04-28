@@ -154,6 +154,30 @@ python3 scripts/analyze_heavy_perf_suite.py \
 - `analysis.md` — ranking кейсов по `ask p95` + stage breakdown;
 - `analysis.json` — машинно-читаемая сводка.
 
+
+### Runtime stage benchmark (vision + embedding/vector/rerank + llm_generation)
+Если нужно разложение runtime по шагам (`vision`, `embedding`, `vector_search`, `rerank`, `llm_generation`), используйте:
+
+```bash
+python3 scripts/run_runtime_stage_benchmark.py \
+  --api-url http://localhost:8000 \
+  --question-file scripts/perf_questions/long_enterprise_request.txt \
+  --question-repeat 1 \
+  --top-k 6 \
+  --iterations 8 \
+  --adaptive \
+  --mode-hint ocr \
+  --reranker-hint on
+```
+
+Скрипт:
+- отправляет `/ask` с уникальным `X-Request-ID`;
+- читает trace-карточку из `data/rag_traces/ui_requests/...`;
+- агрегирует `vision`, `embedding`, `vector_search`, `rerank`, `llm_generation`;
+- сохраняет отчёт в `data/rag_traces/runtime_stage_benchmark/<timestamp>_*/report.json|md`.
+
+Для сравнения OCR vs VLM и reranker on/off запускайте его сериями при соответствующих env (`VISION_RUNTIME_MODE`, `RETRIEVAL_USE_RERANKER`) и перезапуске `support-api`.
+
 ## Предварительные требования
 Перед запуском убедитесь, что в текущем shell доступны Docker и Docker Compose v2:
 
