@@ -141,3 +141,23 @@ def test_retrieve_deduplicates_same_chunk(monkeypatch):
     assert len(result) == 1
     assert result[0]["doc_id"] == "vision_regression_marker"
     assert result[0]["chunk_id"] == "vision_regression_marker_ch_0"
+
+
+def test_retrieve_with_trace_includes_raw_and_rerank(monkeypatch):
+    monkeypatch.setattr("src.rag.retriever.EmbeddingClient.embed", lambda question: [0.1, 0.2, 0.3])
+    monkeypatch.setattr("src.rag.retriever.RerankerClient.rerank", lambda q, docs: [0.2, 0.8])
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_candidate_pool_multiplier", 1)
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_min_score", 0.1)
+    monkeypatch.setattr("src.rag.retriever.settings.retrieval_use_reranker", True)
+
+    retriever = Retriever()
+    retriever.qdrant = _FakeQdrant()
+
+    contexts, trace = retriever.retrieve_with_trace("test", top_k=3, scope="all")
+
+    assert len(contexts) == 2
+    assert "csv_ans_docs" in trace["raw_by_collection"]
+    assert "internal_regulations" in trace["raw_by_collection"]
+    assert trace["combined_sorted"][0]["doc_id"] == "REG-2"
+    assert trace["reranker"]["applied"] is True
+    assert set(trace["timings_sec"]) == {"embedding", "retrieval", "rerank", "total"}

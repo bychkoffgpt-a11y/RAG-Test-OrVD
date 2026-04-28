@@ -65,6 +65,25 @@
 - По ссылке вида `/sources/{source_type}/{doc_id}/download` можно скачать исходный документ, на который ссылается ответ.
 
 ## Диагностика полного RAG-пути (trace)
+### Автоматические trace-карточки на каждый UI/runtime запрос
+`support-api` автоматически создаёт отдельные trace-файлы для каждого запроса в `/ask` и `/v1/chat/completions` (включая запросы из Open WebUI).
+
+По умолчанию файлы пишутся в `/data/rag_traces/ui_requests/<YYYY>/<MM>/<DD>/`:
+- `<timestamp>_<request_id>.json` — полный машинно-читаемый trace;
+- `<timestamp>_<request_id>.md` — карточка для быстрого ручного анализа.
+
+Содержимое карточки включает:
+- входной payload (question/scope/top_k/attachments);
+- этапы vision (prompt + `visual_evidence`);
+- retrieval по коллекциям Qdrant (`raw_by_collection`, `combined_sorted`);
+- результаты reranker (score per chunk);
+- финальный prompt перед LLM и ответ;
+- агрегированные тайминги по этапам (`pre_processing`, `vision`, `embedding`, `vector_search`, `rerank`, `prompt_build`, `llm_generation`, `post_formatting`, `total`).
+
+Настройки:
+- `RAG_UI_TRACE_ENABLED=true|false` — включение/выключение автосоздания карточек;
+- `RAG_UI_TRACE_DIR=/data/rag_traces/ui_requests` — корневая директория trace-карточек.
+
 Для отладки качества ответов используйте скрипт:
 ```bash
 python3 scripts/trace_rag_pipeline.py \
@@ -135,6 +154,30 @@ python3 scripts/analyze_heavy_perf_suite.py \
 - `analysis.md` — ranking кейсов по `ask p95` + stage breakdown;
 - `analysis.json` — машинно-читаемая сводка.
 
+
+### Runtime stage benchmark (vision + embedding/vector/rerank + llm_generation)
+Если нужно разложение runtime по шагам (`vision`, `embedding`, `vector_search`, `rerank`, `llm_generation`), используйте:
+
+```bash
+python3 scripts/run_runtime_stage_benchmark.py \
+  --api-url http://localhost:8000 \
+  --question-file scripts/perf_questions/long_enterprise_request.txt \
+  --question-repeat 1 \
+  --top-k 6 \
+  --iterations 8 \
+  --adaptive \
+  --mode-hint ocr \
+  --reranker-hint on
+```
+
+Скрипт:
+- отправляет `/ask` с уникальным `X-Request-ID`;
+- читает trace-карточку из `data/rag_traces/ui_requests/...`;
+- агрегирует `vision`, `embedding`, `vector_search`, `rerank`, `llm_generation`;
+- сохраняет отчёт в `data/rag_traces/runtime_stage_benchmark/<timestamp>_*/report.json|md`.
+
+Для сравнения OCR vs VLM и reranker on/off запускайте его сериями при соответствующих env (`VISION_RUNTIME_MODE`, `RETRIEVAL_USE_RERANKER`) и перезапуске `support-api`.
+
 ## Предварительные требования
 Перед запуском убедитесь, что в текущем shell доступны Docker и Docker Compose v2:
 
@@ -150,6 +193,7 @@ docker compose version
 - Переменные `NVIDIA_VISIBLE_DEVICES=all` и `NVIDIA_DRIVER_CAPABILITIES=compute,utility` должны оставаться включёнными.
 - На старте контейнера больше не выполняется принудительное переключение на CPU: сервис сохраняет заданный `-ngl`, чтобы не ломать GPU-режим в окружениях, где CUDA доступна, но `/dev/nvidia*` определяется нестандартно.
 - Для сбора метрик Prometheus endpoint `/metrics` должен быть включён аргументом `--metrics` (по умолчанию через `LLM_SERVER_EXTRA_ARGS=--metrics`).
+- В `llm-server` по умолчанию включена санитизация логов (`LLM_LOG_SANITIZER=1`): она устраняет склейку timestamp-строк, убирает предупреждение о конфликте `LLAMA_ARG_HOST` и фильтрует известные шумовые артефакты llama.cpp (`unaccounted` overflow и `n_ctx_seq < n_ctx_train`).
 
 ### Диагностика `/metrics` для `llm-server`
 Если в логах `llm-server` повторяются записи `GET /metrics ... 501`, это обычно означает, что сервер запущен без `--metrics`.
