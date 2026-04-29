@@ -7,18 +7,24 @@ import statistics
 from pathlib import Path
 from typing import List, Dict, Any
 
-
 def normalize_text(s: str) -> str:
-    s = s.lower().replace("ё", "е")
+    s = s.lower()
+    s = s.replace("ё", "е")
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
-
 def fact_to_keywords(fact: str) -> List[str]:
+    """
+    Простое извлечение 'якорных' токенов из факта.
+    Пример: 'Есть дата 2026-05-15' -> ['2026-05-15']
+    """
     f = normalize_text(fact)
+    # токены: слова/числа/даты/символы типа c-7, a-1024
     tokens = re.findall(r"[a-zа-я0-9\-:\.%$]+", f, flags=re.IGNORECASE)
+    # убираем слишком короткие и шумовые
     stop = {"есть", "на", "и", "в", "по", "это", "как", "для", "из", "the", "is", "a", "an", "of"}
     tokens = [t for t in tokens if len(t) >= 2 and t not in stop]
+    # оставляем уникальные в порядке
     uniq = []
     seen = set()
     for t in tokens:
@@ -27,8 +33,12 @@ def fact_to_keywords(fact: str) -> List[str]:
             uniq.append(t)
     return uniq[:8]
 
-
 def match_fact(answer_norm: str, fact: str) -> bool:
+    """
+    Факт засчитан, если в ответе есть >=1-2 ключевых токена факта:
+    - для коротких фактов: >=1 токен
+    - для длинных: >=2 токена
+    """
     kws = fact_to_keywords(fact)
     if not kws:
         return False
@@ -36,10 +46,11 @@ def match_fact(answer_norm: str, fact: str) -> bool:
     need = 1 if len(kws) <= 2 else 2
     return hits >= need
 
-
 def detect_negative_hit(answer_norm: str, neg_fact: str) -> bool:
+    """
+    Если негативный факт 'матчится', считаем это потенциальной галлюцинацией.
+    """
     return match_fact(answer_norm, neg_fact)
-
 
 def parse_jsonl(path: Path) -> List[Dict[str, Any]]:
     rows = []
@@ -61,7 +72,6 @@ def parse_jsonl(path: Path) -> List[Dict[str, Any]]:
                 })
     return rows
 
-
 def percentile(values: List[float], p: float) -> float:
     if not values:
         return float("nan")
@@ -74,7 +84,6 @@ def percentile(values: List[float], p: float) -> float:
     d0 = values[f] * (c - k)
     d1 = values[c] * (k - f)
     return d0 + d1
-
 
 def score_rows(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     per_case = []
@@ -155,7 +164,6 @@ def score_rows(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
     return {"summary": summary, "per_case": per_case}
 
-
 def write_csv(per_case: List[Dict[str, Any]], out_csv: Path):
     cols = [
         "id", "latency_ms",
@@ -168,7 +176,6 @@ def write_csv(per_case: List[Dict[str, Any]], out_csv: Path):
         w.writeheader()
         for row in per_case:
             w.writerow({k: row.get(k, "") for k in cols})
-
 
 def main():
     ap = argparse.ArgumentParser(description="Score VLM JSONL results")
@@ -198,7 +205,6 @@ def main():
     print(f"Latency mean (ms)   : {s['latency_mean_ms']}")
     print(f"Saved summary JSON  : {args.out_json}")
     print(f"Saved per-case CSV  : {args.out_csv}")
-
 
 if __name__ == "__main__":
     main()

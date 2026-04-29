@@ -8,18 +8,22 @@ import statistics
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-
+# ------------------------------
+# Normalization helpers
+# ------------------------------
 def norm(s: str) -> str:
     s = (s or "").lower().replace("ё", "е")
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
-
 def tokenize(s: str) -> List[str]:
     s = norm(s)
     return re.findall(r"[a-zа-я0-9\-\+\.:/%$]+", s, flags=re.IGNORECASE)
 
-
+# ------------------------------
+# Alias dictionary (can be extended via --aliases)
+# key token -> list of equivalent surface forms
+# ------------------------------
 DEFAULT_ALIASES = {
     "stop": ["stop", "стоп"],
     "sign": ["sign", "знак", "табличка", "указатель"],
@@ -43,13 +47,12 @@ DEFAULT_ALIASES = {
 }
 
 STOPWORDS = {
-    "есть", "это", "на", "в", "и", "по", "с", "как", "для", "из", "что", "ли", "не", "нет",
-    "the", "is", "a", "an", "of", "to", "in", "on", "and", "or", "with", "by", "as", "it",
+    "есть","это","на","в","и","по","с","как","для","из","что","ли","не","нет",
+    "the","is","a","an","of","to","in","on","and","or","with","by","as","it"
 }
 
 NUMERIC_RE = re.compile(r"\b\d+(?:[\.,]\d+)?\b")
 DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
-
 
 def load_aliases(path: str = None) -> Dict[str, List[str]]:
     aliases = dict(DEFAULT_ALIASES)
@@ -62,10 +65,19 @@ def load_aliases(path: str = None) -> Dict[str, List[str]]:
                 aliases[k] = list(dict.fromkeys(base + list(v)))
     return aliases
 
-
+# ------------------------------
+# Anchor extraction
+# ------------------------------
 def extract_anchors(fact: str) -> List[str]:
+    """
+    Build anchors from a fact:
+    - explicit numbers / dates
+    - important tokens (non-stopwords, len>=2)
+    """
     f = norm(fact)
     anchors = []
+
+    # dates and numbers are strong anchors
     anchors += DATE_RE.findall(f)
     anchors += NUMERIC_RE.findall(f)
 
@@ -77,6 +89,7 @@ def extract_anchors(fact: str) -> List[str]:
             continue
         anchors.append(t)
 
+    # unique preserving order
     out, seen = [], set()
     for a in anchors:
         if a not in seen:
@@ -84,20 +97,28 @@ def extract_anchors(fact: str) -> List[str]:
             out.append(a)
     return out[:12]
 
-
 def expand_anchor(anchor: str, aliases: Dict[str, List[str]]) -> List[str]:
+    """
+    Expand one anchor with alias alternatives.
+    Supports:
+    - direct alias key
+    - fuzzy contains for stems like 'столбчат'
+    """
     a = norm(anchor)
     variants = {a}
 
+    # direct mapping
     if a in aliases:
         variants.update(norm(x) for x in aliases[a])
 
+    # reverse mapping: if anchor matches any alias value, include key + all values
     for key, vals in aliases.items():
         vals_norm = [norm(x) for x in vals]
         if a == norm(key) or a in vals_norm:
             variants.add(norm(key))
             variants.update(vals_norm)
 
+    # heuristics for stems
     if a.startswith("столбчат"):
         variants.update(["bar", "столбчат", "гистограмм"])
     if a.startswith("линейн"):
@@ -107,13 +128,24 @@ def expand_anchor(anchor: str, aliases: Dict[str, List[str]]) -> List[str]:
 
     return sorted(variants)
 
-
 def text_contains_any(answer: str, variants: List[str]) -> bool:
     ans = norm(answer)
-    return any(v and v in ans for v in variants)
+    for v in variants:
+        if not v:
+            continue
+        # phrase match
+        if v in ans:
+            return True
+    return False
 
-
+# ------------------------------
+# Partial scoring
+# ------------------------------
 def score_fact_partial(answer: str, fact: str, aliases: Dict[str, List[str]]) -> Tuple[float, Dict[str, Any]]:
+    """
+    Returns score in [0,1]:
+      matched_anchors / total_anchors (with min anchors fallback)
+    """
     anchors = extract_anchors(fact)
     if not anchors:
         return 0.0, {"anchors": [], "matched": [], "ratio": 0.0}
@@ -126,16 +158,22 @@ def score_fact_partial(answer: str, fact: str, aliases: Dict[str, List[str]]) ->
 
     ratio = len(matched) / len(anchors)
 
+    # soften strictness:
+    # if at least one strong numeric/date matched, give floor credit
     strong = [x for x in anchors if DATE_RE.fullmatch(x) or NUMERIC_RE.fullmatch(x)]
     strong_matched = any(x in matched for x in strong)
     if strong and strong_matched and ratio < 0.35:
         ratio = 0.35
 
-    return max(0.0, min(1.0, ratio)), {"anchors": anchors, "matched": matched, "ratio": ratio}
-
+    return max(0.0, min(1.0, ratio)), {
+        "anchors": anchors,
+        "matched": matched,
+        "ratio": ratio
+    }
 
 def classify_group(case_id: str, url: str) -> str:
     s = norm(case_id + " " + (url or ""))
+    # Heuristics tailored to provided dataset ids/urls
     if any(k in s for k in ["chart", "quickchart", "pie", "line_trend", "sales_q", "compare_ab"]):
         return "chart"
     if any(k in s for k in ["sign", "warning", "exit", "stop"]):
@@ -143,7 +181,6 @@ def classify_group(case_id: str, url: str) -> str:
     if any(k in s for k in ["invoice", "table", "note", "meeting", "error_banner", "multiline", "text"]):
         return "text"
     return "other"
-
 
 def percentile(vals: List[float], p: float) -> float:
     if not vals:
@@ -155,7 +192,6 @@ def percentile(vals: List[float], p: float) -> float:
     if f == c:
         return vals[f]
     return vals[f] + (vals[c] - vals[f]) * (k - f)
-
 
 def parse_jsonl(path: Path) -> List[Dict[str, Any]]:
     rows = []
@@ -174,10 +210,9 @@ def parse_jsonl(path: Path) -> List[Dict[str, Any]]:
                     "golden_facts": [],
                     "negative_facts": [],
                     "latency_ms": None,
-                    "url": "",
+                    "url": ""
                 })
     return rows
-
 
 def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_threshold: float = 0.6) -> Dict[str, Any]:
     per_case = []
@@ -187,9 +222,11 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
     total_gold = 0
     total_gold_hard_hits = 0
     total_gold_partial_sum = 0.0
+
     total_neg = 0
     total_neg_hard_hits = 0
     total_neg_partial_sum = 0.0
+
     errors = 0
 
     for r in rows:
@@ -209,24 +246,30 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         golden = r.get("golden_facts") or []
         negative = r.get("negative_facts") or []
 
-        gold_scores, gold_hard, gold_details = [], 0, []
+        gold_scores = []
+        gold_hard = 0
+        gold_details = []
         for gf in golden:
             sc, det = score_fact_partial(ans, gf, aliases)
             gold_scores.append(sc)
             if sc >= hit_threshold:
                 gold_hard += 1
-            gold_details.append({"fact": gf, "score": round(sc, 4), "matched": det["matched"], "anchors": det["anchors"]})
+            gold_details.append({"fact": gf, "score": round(sc,4), "matched": det["matched"], "anchors": det["anchors"]})
 
-        neg_scores, neg_hard, neg_details = [], 0, []
+        neg_scores = []
+        neg_hard = 0
+        neg_details = []
         for nf in negative:
             sc, det = score_fact_partial(ans, nf, aliases)
             neg_scores.append(sc)
             if sc >= hit_threshold:
                 neg_hard += 1
-            neg_details.append({"fact": nf, "score": round(sc, 4), "matched": det["matched"], "anchors": det["anchors"]})
+            neg_details.append({"fact": nf, "score": round(sc,4), "matched": det["matched"], "anchors": det["anchors"]})
 
         case_gold_partial = (sum(gold_scores) / len(golden)) if golden else 0.0
         case_gold_hard_recall = (gold_hard / len(golden)) if golden else 0.0
+
+        # For negatives: higher match = worse (potential hallucination)
         case_neg_partial = (sum(neg_scores) / len(negative)) if negative else 0.0
         case_neg_hard = (neg_hard / len(negative)) if negative else 0.0
 
@@ -247,18 +290,21 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
             "negative_details_json": json.dumps(neg_details, ensure_ascii=False),
         })
 
+        # overall accumulators
         total_gold += len(golden)
         total_gold_hard_hits += gold_hard
         total_gold_partial_sum += sum(gold_scores)
+
         total_neg += len(negative)
         total_neg_hard_hits += neg_hard
         total_neg_partial_sum += sum(neg_scores)
 
+        # group accumulators
         g = by_group.setdefault(grp, {
             "cases": 0,
             "gold_total": 0, "gold_hard": 0, "gold_partial_sum": 0.0,
             "neg_total": 0, "neg_hard": 0, "neg_partial_sum": 0.0,
-            "lat": [],
+            "lat": []
         })
         g["cases"] += 1
         g["gold_total"] += len(golden)
@@ -300,20 +346,18 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
 
     return {"summary": summary, "groups": groups, "per_case": per_case}
 
-
 def write_csv(per_case: List[Dict[str, Any]], path: Path):
     cols = [
-        "id", "group", "latency_ms", "error",
-        "golden_total", "golden_hard_hits", "golden_hard_recall", "golden_partial_recall",
-        "negative_total", "negative_hard_hits", "hallucination_hard_rate", "hallucination_partial_rate",
-        "golden_details_json", "negative_details_json",
+        "id","group","latency_ms","error",
+        "golden_total","golden_hard_hits","golden_hard_recall","golden_partial_recall",
+        "negative_total","negative_hard_hits","hallucination_hard_rate","hallucination_partial_rate",
+        "golden_details_json","negative_details_json"
     ]
     with path.open("w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
         for r in per_case:
             w.writerow({k: r.get(k, "") for k in cols})
-
 
 def main():
     ap = argparse.ArgumentParser(description="VLM scorer v2 with aliases + partial credit + group metrics")
@@ -346,16 +390,13 @@ def main():
 
     print("\n=== BY GROUP ===")
     for g, m in sorted(report["groups"].items()):
-        print(
-            f"[{g}] cases={m['cases']}, "
-            f"gold_hard={m['golden_hard_recall']:.4f}, gold_partial={m['golden_partial_recall']:.4f}, "
-            f"hall_hard={m['hallucination_hard_rate']:.4f}, hall_partial={m['hallucination_partial_rate']:.4f}, "
-            f"p50={m['latency_p50_ms']}, p95={m['latency_p95_ms']}"
-        )
+        print(f"[{g}] cases={m['cases']}, "
+              f"gold_hard={m['golden_hard_recall']:.4f}, gold_partial={m['golden_partial_recall']:.4f}, "
+              f"hall_hard={m['hallucination_hard_rate']:.4f}, hall_partial={m['hallucination_partial_rate']:.4f}, "
+              f"p50={m['latency_p50_ms']}, p95={m['latency_p95_ms']}")
 
     print(f"\nSaved summary JSON          : {args.out_json}")
     print(f"Saved per-case CSV          : {args.out_csv}")
-
 
 if __name__ == "__main__":
     main()
