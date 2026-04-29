@@ -4,6 +4,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from src.api.schemas import AskRequest, AskResponse
 from src.rag.orchestrator import RagOrchestrator
+from src.rag.vision.input_adapter import adapt_image_attachments
 
 router = APIRouter(prefix='/ask', tags=['ask'])
 orch = RagOrchestrator()
@@ -14,9 +15,11 @@ def ask(payload: AskRequest) -> AskResponse:
     started = time.perf_counter()
     try:
         try:
-            return orch.answer(payload, endpoint='/ask', pre_processing_sec=time.perf_counter() - started)
+            normalized_payload = payload.model_copy(update={'attachments': adapt_image_attachments(ask_attachments=payload.attachments)})
+            return orch.answer(normalized_payload, endpoint='/ask', pre_processing_sec=time.perf_counter() - started)
         except TypeError:
-            return orch.answer(payload)
+            normalized_payload = payload.model_copy(update={'attachments': adapt_image_attachments(ask_attachments=payload.attachments)})
+            return orch.answer(normalized_payload)
     except httpx.TimeoutException as exc:
         raise HTTPException(status_code=504, detail='Таймаут запроса к LLM backend') from exc
     except httpx.HTTPError as exc:
