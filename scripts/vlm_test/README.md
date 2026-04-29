@@ -15,6 +15,7 @@
 - `probe_ask_vlm.py` — быстрый smoke probe `/ask` на одном изображении.
 - `check_ask_trace.py` — проверка полноты диагностических этапов по `trace_id/request_id` в plain-text и JSON-логах.
 - `summarize_vlm_diagnostics.py` — сводный markdown-отчёт сравнения `/ask` vs `/chat`.
+- `print_vlm_faceoff.py` — консольный face-off «ожидаемые факты vs фактический ответ» по каждому кейсу.
 - `run_full_diagnostics.sh` — единый сценарий, который запускает всё end-to-end.
 
 ## Предварительные условия
@@ -85,6 +86,26 @@ python3 summarize_vlm_diagnostics.py \
   --chat-summary vlm_chat_score_v2_summary.json \
   --out-markdown comparison.md
 ```
+
+
+## Визуальная сверка «лицом к лицу»
+
+После прогона можно открыть удобное консольное сравнение: ожидаемые факты (golden/negative) и фактический `answer_text`.
+
+```bash
+python3 print_vlm_faceoff.py \
+  --input out/<timestamp>/vlm_ask_results.jsonl
+
+# только один кейс
+python3 print_vlm_faceoff.py \
+  --input out/<timestamp>/vlm_chat_results.jsonl \
+  --case img05_chart_sales_q
+```
+
+Скрипт отмечает:
+- `✓` — факт, вероятно, найден в ответе;
+- `✗` — факт не найден;
+- `⚠` — негативный факт потенциально попал в ответ (риск галлюцинации).
 
 ## Быстрый debug `/ask`
 
