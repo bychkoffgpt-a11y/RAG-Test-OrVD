@@ -154,3 +154,39 @@ def test_orchestrator_writes_trace_card():
     assert captured["card"]["stages"]["prompt"]["final_prompt"]
     assert captured["card"]["stages"]["retrieval"]["combined_sorted"]
     assert captured["card"]["aggregate_timings_sec"]["total"] >= 0
+
+
+def test_orchestrator_returns_response_when_trace_dir_mkdir_permission_error(monkeypatch):
+    orch = RagOrchestrator()
+    orch.retriever = _RetrieverWithOneContext()
+    orch.llm = _LlmWithFixedAnswer()
+    orch.vision = _NoEvidenceVision()
+
+    def _raise_permission_error(*args, **kwargs):
+        raise PermissionError('mkdir denied')
+
+    monkeypatch.setattr('src.rag.trace_card.Path.mkdir', _raise_permission_error)
+
+    payload = AskRequest(question='Проверь mkdir error', top_k=8, scope='all')
+    response = orch.answer(payload)
+
+    assert response.answer == 'Тестовый ответ'
+    assert len(response.sources) == 1
+
+
+def test_orchestrator_returns_response_when_trace_write_permission_error(monkeypatch):
+    orch = RagOrchestrator()
+    orch.retriever = _RetrieverWithOneContext()
+    orch.llm = _LlmWithFixedAnswer()
+    orch.vision = _NoEvidenceVision()
+
+    def _raise_permission_error(*args, **kwargs):
+        raise PermissionError('write denied')
+
+    monkeypatch.setattr('src.rag.trace_card.Path.write_text', _raise_permission_error)
+
+    payload = AskRequest(question='Проверь write error', top_k=8, scope='all')
+    response = orch.answer(payload)
+
+    assert response.answer == 'Тестовый ответ'
+    assert len(response.sources) == 1

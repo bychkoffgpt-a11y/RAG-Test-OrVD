@@ -23,21 +23,25 @@ class TraceCardWriter:
         request_id = str(card.get('meta', {}).get('request_id') or 'no-request-id')
         safe_request_id = re.sub(r'[^a-zA-Z0-9._-]+', '-', request_id).strip('-') or 'request'
         day_dir = self.base_dir / now.strftime('%Y') / now.strftime('%m') / now.strftime('%d')
-        day_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            day_dir.mkdir(parents=True, exist_ok=True)
 
-        slug = f"{now.strftime('%H%M%S_%f')}_{safe_request_id}"
-        json_path = day_dir / f'{slug}.json'
-        md_path = day_dir / f'{slug}.md'
+            slug = f"{now.strftime('%H%M%S_%f')}_{safe_request_id}"
+            json_path = day_dir / f'{slug}.json'
+            md_path = day_dir / f'{slug}.md'
 
-        card['meta'] = {
+            card['meta'] = {
             **card.get('meta', {}),
             'trace_generated_at': now.isoformat(),
             'json_path': str(json_path),
             'markdown_path': str(md_path),
         }
 
-        json_path.write_text(json.dumps(card, ensure_ascii=False, indent=2), encoding='utf-8')
-        md_path.write_text(self._render_markdown(card), encoding='utf-8')
+            json_path.write_text(json.dumps(card, ensure_ascii=False, indent=2), encoding='utf-8')
+            md_path.write_text(self._render_markdown(card), encoding='utf-8')
+        except (PermissionError, OSError) as exc:
+            logger.warning('rag_trace_card_write_failed', extra={'error': str(exc), 'trace_dir': str(day_dir)})
+            return None
 
         logger.info('rag_trace_card_written', extra={'json_path': str(json_path), 'markdown_path': str(md_path)})
         return {'json_path': str(json_path), 'markdown_path': str(md_path)}
