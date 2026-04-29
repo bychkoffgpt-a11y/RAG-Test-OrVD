@@ -1,6 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  cat <<'EOF'
+Usage: ./scripts/build_os_base_images.sh
+
+Собирает OS base-образы (APT-слой), используемые в offline-first pipeline:
+  - support-api OS base
+  - ingest OS base
+
+Параметры передаются через переменные окружения:
+  SUPPORT_API_OS_BASE_IMAGE_REPO   Репозиторий support-api OS base
+                                   (default: local/rag-support-api-os-base)
+  INGEST_OS_BASE_IMAGE_REPO        Репозиторий ingest OS base
+                                   (default: local/rag-ingest-os-base)
+  OS_TAG                           Тег образов (default: latest)
+  PUSH_IMAGE                       1 = выполнить docker push (default: 0)
+  DEBIAN_MIRROR                    Debian mirror для support-api OS build
+  DEBIAN_SECURITY_MIRROR           Debian security mirror для support-api OS build
+
+Примеры:
+  ./scripts/build_os_base_images.sh
+  OS_TAG=2026-04-29 PUSH_IMAGE=1 ./scripts/build_os_base_images.sh
+EOF
+  exit 0
+fi
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="${ROOT_DIR}/app"
 

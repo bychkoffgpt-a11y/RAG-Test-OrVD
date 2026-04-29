@@ -1,6 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  cat <<'EOF'
+Usage: ./scripts/build_support_api_base.sh
+
+Собирает deps base-образ support-api (Python dependencies layer) с детерминированным
+тегом по хэшу входов (pyproject + Dockerfile + wheelhouse hash).
+
+Ключевые переменные окружения:
+  IMAGE_REPO                  Репозиторий целевого образа
+                              (default: SUPPORT_API_BASE_IMAGE_REPO или ghcr.io/csv-ans/rag-support-api-base)
+  PUSH_IMAGE                  1 = выполнить push после сборки (default: 0)
+  PIP_MODE                    auto | online | offline (default: auto)
+  SUPPORT_API_OS_BASE_IMAGE   Базовый OS-образ для сборки deps слоя
+  FORCE_BUILDKIT              1 = не отключать BuildKit в offline-режиме
+  PIP_INDEX_URL, PIP_FALLBACK_INDEX_URL, PIP_EXTRA_INDEX_URL, PIP_TRUSTED_HOST
+  PIP_ONLINE_FALLBACK         1 = разрешить online fallback при PIP_MODE=auto/online
+
+Offline поведение:
+  - Требует непустой app/wheels.
+  - Требует локально доступный SUPPORT_API_OS_BASE_IMAGE.
+  - По умолчанию отключает BuildKit (DOCKER_BUILDKIT=0), если FORCE_BUILDKIT!=1.
+
+Примеры:
+  ./scripts/build_support_api_base.sh
+  PIP_MODE=offline IMAGE_REPO=local/rag-support-api-base ./scripts/build_support_api_base.sh
+  PUSH_IMAGE=1 IMAGE_REPO=cr.yandex/<registry>/rag-support-api-base ./scripts/build_support_api_base.sh
+EOF
+  exit 0
+fi
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="${ROOT_DIR}/app"
 
