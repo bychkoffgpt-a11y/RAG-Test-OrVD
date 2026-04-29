@@ -9,3 +9,6 @@ models/**
 !models/.gitkeep
 .docker-cache/
 app/wheels
+data/
+/ab_A
+/ab_B
