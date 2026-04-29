@@ -67,6 +67,10 @@ OpenAI-compatible endpoint.
 - `max_tokens` (default 1024), `temperature` (default 0.1), `stream`;
 - image attachments в `content` (`image_url`, `input_image`, `image`).
 
+Поведение для chart-кейсов:
+- если `max_tokens` не передан и запрос распознан как chart/graph/diagram, используется сниженный бюджет генерации `VISION_CHART_RUNTIME_MAX_TOKENS` (по умолчанию `256`);
+- для chart-кейсов в orchestration передаётся инструкция формировать краткий структурированный ответ без лишних объяснений.
+
 Форматы image-вложений:
 - `file:///...` (локальный путь в контейнере `support-api`, с учётом alias из `VISION_ATTACHMENT_PATH_ALIASES`);
 - `data:image/<type>;base64,...` (будет материализовано во временный файл в `${FILE_STORAGE_ROOT}/runtime_uploads`);

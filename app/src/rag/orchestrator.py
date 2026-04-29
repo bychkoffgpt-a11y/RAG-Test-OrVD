@@ -35,6 +35,10 @@ class RagOrchestrator:
         duration_sec: float,
         payload: AskRequest,
     ) -> None:
+        case_type = 'text_only'
+        if payload.attachments:
+            first_image = payload.attachments[0].image_path if payload.attachments else ''
+            case_type = VisionService._detect_task_type(question=payload.question, image_path=first_image)
         observe_rag_stage_latency(
             endpoint=endpoint,
             stage=stage,
@@ -42,6 +46,7 @@ class RagOrchestrator:
             scope=payload.scope,
             vision_mode=settings.vision_runtime_mode,
             duration_sec=duration_sec,
+            case_type=case_type,
         )
 
     def answer(

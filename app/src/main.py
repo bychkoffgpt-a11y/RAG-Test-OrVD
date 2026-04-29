@@ -192,6 +192,20 @@ def _extract_attachments_from_message_content(content) -> list[AttachmentItem]:
     return attachments
 
 
+def _looks_like_chart_case(question: str, messages: list[dict]) -> bool:
+    signal_parts = [question or '']
+    for message in messages:
+        content = message.get('content')
+        if isinstance(content, str):
+            signal_parts.append(content)
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get('type') == 'text':
+                    signal_parts.append(str(part.get('text', '')))
+    signal = ' '.join(signal_parts).lower()
+    return any(k in signal for k in ('chart', 'graph', 'plot', 'diagram', 'legend', 'axis', 'диаграм', 'график', 'ось'))
+
+
 @app.middleware('http')
 async def metrics_middleware(request: Request, call_next):
     start = time.perf_counter()
@@ -270,9 +284,10 @@ def openai_compat(payload: dict, request: Request):
             logger.warning('openai_compat_question_missing')
             return JSONResponse(status_code=400, content={'detail': 'Не удалось извлечь текст вопроса из messages.'})
 
+    chart_mode = _looks_like_chart_case(question, messages)
     raw_max_tokens = payload.get('max_tokens')
     if raw_max_tokens is None:
-        max_tokens = 1024
+        max_tokens = settings.vision_chart_runtime_max_tokens if chart_mode else 1024
     else:
         max_tokens = int(raw_max_tokens)
 
@@ -283,6 +298,12 @@ def openai_compat(payload: dict, request: Request):
         temperature = float(raw_temperature)
 
     try:
+        if chart_mode:
+            question = (
+                f'{question}\n\n'
+                'Режим chart: верни только структурированные поля (legend, axis, points/trends, uncertainties) '
+                'без лишних пояснений.'
+            )
         ask_payload = AskRequest(question=question, top_k=8, scope='all', attachments=attachments)
         try:
             answer = orch.answer(
