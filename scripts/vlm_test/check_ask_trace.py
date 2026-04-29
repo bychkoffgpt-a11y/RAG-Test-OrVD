@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import re
 from collections import defaultdict
 
-RE_TRACE = re.compile(r'trace_id[="\:\s]+([a-zA-Z0-9\-_]+)')
+RE_TRACE = re.compile(r'(?:trace_id|request_id)[="\:\s]+([a-zA-Z0-9\-_]+)')
 STAGES = [
     "ask.request_received",
     "ask.request_parsed",
@@ -22,12 +23,34 @@ def main():
     traces = defaultdict(set)
     with open(args.log_file, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
-            m = RE_TRACE.search(line)
-            if not m:
+            payload = None
+            stripped = line.strip()
+            if stripped.startswith("{") and stripped.endswith("}"):
+                try:
+                    payload = json.loads(stripped)
+                except json.JSONDecodeError:
+                    payload = None
+
+            if payload:
+                tid = (
+                    payload.get("trace_id")
+                    or payload.get("request_id")
+                    or payload.get("correlation_id")
+                )
+                message = str(payload.get("message", ""))
+                event = str(payload.get("event", ""))
+                stage_text = f"{message} {event}".strip()
+            else:
+                m = RE_TRACE.search(line)
+                if not m:
+                    continue
+                tid = m.group(1)
+                stage_text = line
+
+            if not tid:
                 continue
-            tid = m.group(1)
             for s in STAGES:
-                if s in line:
+                if s in stage_text:
                     traces[tid].add(s)
 
     print(f"Traces found: {len(traces)}")
