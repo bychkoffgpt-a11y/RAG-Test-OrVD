@@ -264,7 +264,7 @@ def openai_compat(payload: dict, request: Request):
     is_vision_only = bool(attachments) and not question.strip()
     if not question.strip():
         if attachments:
-            question = 'Опиши изображение 4-6 конкретными фактами. Если что-то не видно, так и скажи.'
+            question = 'Опишите, что видно на скриншоте, и предложите решение проблемы.'
             logger.info('openai_compat_question_fallback_used')
         else:
             logger.warning('openai_compat_question_missing')

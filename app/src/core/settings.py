@@ -50,8 +50,10 @@ class Settings(BaseSettings):
     }
     vision_attachment_path_aliases: str = '/app/backend/data/uploads=/data/runtime_uploads'
     vision_model_prompt_runtime: str = (
-        'Опиши скриншот пользователя для службы поддержки. '
-        'Если видны ошибки/коды/статусы — укажи их.'
+        'Проанализируй изображение и верни строго JSON без свободного текста. '
+        'Единая схема: detected_text (string), objects (array of strings), numbers (array of strings), '
+        'chart_points (array of objects with label/value), confidence (number 0..1), '
+        'evidence_spans (array of strings с буквальными фрагментами из изображения).'
     )
     vision_model_prompt_ingest: str = (
         'Кратко опиши изображение для индексации документации. '

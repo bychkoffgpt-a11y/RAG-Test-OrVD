@@ -1,18 +1,36 @@
+import json
 import logging
 import os
 import re
 import threading
 import time
+import unicodedata
 from pathlib import Path
 from typing import Iterable
 
 from src.api.schemas import AttachmentItem, VisionEvidenceItem
+from pydantic import BaseModel, Field, ValidationError
 from src.core.settings import settings
 
 logger = logging.getLogger(__name__)
 _OCR_UNSUPPORTED_IMAGE_EXTENSIONS = {'.jb2', '.jbig2'}
 _VISION_MODES = {'ocr', 'vlm'}
 _VLM_SUPPORTED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}
+
+
+class VlmChartPoint(BaseModel):
+    label: str = ''
+    value: str = ''
+
+
+class VlmStructuredResponse(BaseModel):
+    detected_text: str = ''
+    objects: list[str] = Field(default_factory=list)
+    numbers: list[str] = Field(default_factory=list)
+    chart_points: list[VlmChartPoint] = Field(default_factory=list)
+    confidence: float = 0.0
+    evidence_spans: list[str] = Field(default_factory=list)
+
 
 
 class VisionService:
@@ -179,7 +197,7 @@ class VisionService:
         extracted_text = self._extract_image_text_or_caption(image_path, question=question, mode=mode, deadline=deadline)
         summary = self._build_summary(image_path, extracted_text, mode=mode)
         confidence = self._estimate_confidence(extracted_text)
-        ocr_text = extracted_text
+        ocr_text = extracted_text if mode == 'ocr' else self._compose_structured_text(extracted_text)
 
         logger.info(
             'vision_image_processed',
@@ -487,10 +505,69 @@ class VisionService:
             result = (output[0] if output else '').strip()
             if result.startswith(text):
                 result = result[len(text):].strip()
-            return result
+            if self._parse_vlm_json(result) is not None:
+                return result
+
+            repair_text = self._repair_prompt(result)
+            if hasattr(processor, 'apply_chat_template'):
+                repair_messages = [{'role': 'user', 'content': [{'type': 'image'}, {'type': 'text', 'text': repair_text}]}]
+                repair_prompt = processor.apply_chat_template(repair_messages, tokenize=False, add_generation_prompt=True)
+            else:
+                repair_prompt = repair_text
+            repair_inputs = processor(text=[repair_prompt], images=[image], return_tensors='pt', padding=True)
+            if device == 'cuda':
+                repair_inputs = {k: (v.to('cuda') if hasattr(v, 'to') else v) for k, v in repair_inputs.items()}
+            with torch.no_grad():
+                repair_generated = model.generate(**repair_inputs, **generate_kwargs)
+            repaired_output = processor.batch_decode(repair_generated, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+            repaired = (repaired_output[0] if repaired_output else '').strip()
+            if repaired.startswith(repair_prompt):
+                repaired = repaired[len(repair_prompt):].strip()
+            if self._parse_vlm_json(repaired) is None:
+                logger.warning('vision_vlm_json_invalid_after_retry', extra={'image_path': image_path})
+                return ''
+            return repaired
         except Exception:
             logger.exception('vision_vlm_inference_failed', extra={'image_path': image_path})
             return ''
+
+    @staticmethod
+    def _repair_prompt(raw_output: str) -> str:
+        return (
+            'Исправь ответ. Верни только валидный JSON строго по схеме '
+            '(detected_text, objects, numbers, chart_points, confidence, evidence_spans). '
+            f'Текущий невалидный ответ: {raw_output}'
+        )
+
+    @staticmethod
+    def _normalize_for_scoring(text: str) -> str:
+        normalized = unicodedata.normalize('NFKC', (text or '').strip().lower())
+        normalized = re.sub(r'[\u2012\u2013\u2014\u2212]', '-', normalized)
+        normalized = re.sub(r'(?<=\d)[\s,](?=\d{3}\b)', '', normalized)
+        normalized = re.sub(r'(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})', r'\3-\2-\1', normalized)
+        normalized = re.sub(r'\b(kg|kgs|кг\.?|килограмм(?:ов|а)?)\b', 'kg', normalized)
+        normalized = re.sub(r'\s+', ' ', normalized)
+        return normalized.strip()
+
+    def _compose_structured_text(self, raw_output: str) -> str:
+        parsed = self._parse_vlm_json(raw_output)
+        if parsed is None:
+            return ''
+        parts = [
+            parsed.detected_text,
+            ' '.join(parsed.objects),
+            ' '.join(parsed.numbers),
+            ' '.join([f"{p.label}:{p.value}" for p in parsed.chart_points]),
+            ' '.join(parsed.evidence_spans),
+        ]
+        return self._normalize_for_scoring(' | '.join(p for p in parts if p))
+
+    def _parse_vlm_json(self, raw_output: str) -> VlmStructuredResponse | None:
+        try:
+            data = json.loads(raw_output)
+            return VlmStructuredResponse.model_validate(data)
+        except (json.JSONDecodeError, ValidationError, TypeError):
+            return None
 
     @staticmethod
     def _build_summary(image_path: str, extracted_text: str, *, mode: str) -> str:
