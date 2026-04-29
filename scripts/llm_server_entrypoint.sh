@@ -32,7 +32,11 @@ fi
 
 LOG_SANITIZER="${LLM_LOG_SANITIZER:-1}"
 if [ "${LOG_SANITIZER}" = "1" ] && [ -x /opt/llm_log_sanitizer.py ]; then
-  exec /opt/llm_log_sanitizer.py "${LLAMA_SERVER_BIN}" "$@"
+  if command -v python3 >/dev/null 2>&1; then
+    exec /opt/llm_log_sanitizer.py "${LLAMA_SERVER_BIN}" "$@"
+  else
+    echo "WARN: LLM_LOG_SANITIZER=1, but python3 is not available in container; starting llama-server without sanitizer." >&2
+  fi
 fi
 
 exec "${LLAMA_SERVER_BIN}" "$@"
