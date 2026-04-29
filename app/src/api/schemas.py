@@ -12,6 +12,7 @@ class VisionEvidenceItem(BaseModel):
     ocr_text: str = ''
     summary: str = ''
     confidence: float = 0.0
+    task_type: str = 'text'
 
 
 class AskRequest(BaseModel):

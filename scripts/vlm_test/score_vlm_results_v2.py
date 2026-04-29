@@ -232,7 +232,7 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
     for r in rows:
         cid = r.get("id", "unknown")
         url = r.get("url", "")
-        grp = classify_group(cid, url)
+        grp = r.get("task_type_routed") or r.get("task_type") or classify_group(cid, url)
 
         ans = r.get("answer_text") or ""
         err = r.get("error")
@@ -276,6 +276,7 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         per_case.append({
             "id": cid,
             "group": grp,
+            "task_type_routed": r.get("task_type_routed", ""),
             "latency_ms": latency,
             "error": err or "",
             "golden_total": len(golden),
@@ -348,7 +349,7 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
 
 def write_csv(per_case: List[Dict[str, Any]], path: Path):
     cols = [
-        "id","group","latency_ms","error",
+        "id","group","task_type_routed","latency_ms","error",
         "golden_total","golden_hard_hits","golden_hard_recall","golden_partial_recall",
         "negative_total","negative_hard_hits","hallucination_hard_rate","hallucination_partial_rate",
         "golden_details_json","negative_details_json"

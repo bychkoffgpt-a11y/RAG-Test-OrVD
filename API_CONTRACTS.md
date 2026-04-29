@@ -45,7 +45,8 @@
       "image_path": "/data/screenshot.png",
       "ocr_text": "...",
       "summary": "...",
-      "confidence": 0.91
+      "confidence": 0.91,
+      "task_type": "text"
     }
   ]
 }

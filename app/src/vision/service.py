@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 _OCR_UNSUPPORTED_IMAGE_EXTENSIONS = {'.jb2', '.jbig2'}
 _VISION_MODES = {'ocr', 'vlm'}
 _VLM_SUPPORTED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}
+_VISION_TASK_TYPES = {'text', 'sign', 'chart'}
 
 
 class VlmChartPoint(BaseModel):
@@ -194,7 +195,13 @@ class VisionService:
                 confidence=0.0,
             )
 
-        extracted_text = self._extract_image_text_or_caption(image_path, question=question, mode=mode, deadline=deadline)
+        task_type = self._detect_task_type(question=question, image_path=image_path)
+        extracted_text = self._extract_image_text_or_caption(
+            image_path,
+            question=self._build_task_instruction(question=question, task_type=task_type),
+            mode=mode,
+            deadline=deadline,
+        )
         summary = self._build_summary(image_path, extracted_text, mode=mode)
         confidence = self._estimate_confidence(extracted_text)
         ocr_text = extracted_text if mode == 'ocr' else self._compose_structured_text(extracted_text)
@@ -206,6 +213,7 @@ class VisionService:
                 'extracted_text_length': len(extracted_text),
                 'confidence': confidence,
                 'mode': mode,
+                'task_type': task_type,
                 'duration_sec': round(time.perf_counter() - started, 3),
             },
         )
@@ -215,6 +223,7 @@ class VisionService:
             ocr_text=ocr_text,
             summary=summary,
             confidence=confidence,
+            task_type=task_type,
         )
 
     @staticmethod
@@ -240,6 +249,34 @@ class VisionService:
         if mode == 'vlm':
             return self._run_vlm(image_path, question=question, deadline=deadline)
         return self._run_ocr(image_path)
+
+    @staticmethod
+    def _detect_task_type(*, question: str, image_path: str = '') -> str:
+        signal = f'{question} {Path(image_path).name}'.lower()
+        if any(k in signal for k in ('chart', 'graph', 'plot', 'diagram', 'диаграм', 'график', 'legend', 'axis', 'ось')):
+            return 'chart'
+        if any(k in signal for k in ('sign', 'plate', 'notice', 'warning', 'знак', 'таблич', 'указател', 'предупрежден')):
+            return 'sign'
+        return 'text'
+
+    @staticmethod
+    def _build_task_instruction(*, question: str, task_type: str) -> str:
+        if task_type == 'chart':
+            return (
+                f'{question}\n'
+                'Режим chart: извлеки легенду, оси, ключевые точки/тренды; '
+                'неуверенность помечай явно.'
+            )
+        if task_type == 'sign':
+            return (
+                f'{question}\n'
+                'Режим sign: коротко извлеки только видимый текст знака/таблички. '
+                'Строго запрещено домысливать отсутствующие детали.'
+            )
+        return (
+            f'{question}\n'
+            'Режим text: максимальная OCR-точность, построчное извлечение и пары ключ-значение.'
+        )
 
     @staticmethod
     def _apply_runtime_limits(items: list[AttachmentItem]) -> list[AttachmentItem]:
@@ -553,11 +590,13 @@ class VisionService:
         parsed = self._parse_vlm_json(raw_output)
         if parsed is None:
             return ''
+        top_k = max(int(settings.vision_chart_top_k_points), 0)
+        chart_points = parsed.chart_points[:top_k] if top_k else []
         parts = [
             parsed.detected_text,
             ' '.join(parsed.objects),
             ' '.join(parsed.numbers),
-            ' '.join([f"{p.label}:{p.value}" for p in parsed.chart_points]),
+            ' '.join([f"{p.label}:{p.value}" for p in chart_points]),
             ' '.join(parsed.evidence_spans),
         ]
         return self._normalize_for_scoring(' | '.join(p for p in parts if p))
