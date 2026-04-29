@@ -56,6 +56,10 @@ class RagOrchestrator:
         temperature: float = 0.1,
         endpoint: str = '/ask',
         pre_processing_sec: float = 0.0,
+        top_p: float = 0.9,
+        frequency_penalty: float = 0.1,
+        presence_penalty: float = 0.05,
+        stop: list[str] | None = None,
     ) -> AskResponse:
         started = time.perf_counter()
         trace_id = get_request_id()
@@ -171,7 +175,16 @@ class RagOrchestrator:
         llm_started = time.perf_counter()
         _trace('vlm_infer_start')
         llm_trace: dict = {}
-        answer = self.llm.generate(prompt, max_tokens=max_tokens, temperature=temperature, trace=llm_trace)
+        answer = self.llm.generate(
+            prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            frequency_penalty=frequency_penalty,
+            presence_penalty=presence_penalty,
+            stop=stop,
+            trace=llm_trace,
+        )
         llm_duration = time.perf_counter() - llm_started
         _trace(
             'vlm_infer_end',

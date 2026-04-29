@@ -7,7 +7,7 @@
 - Основная логика: `app/src/rag/prompt_builder.py`.
 - Оркестрация вызова LLM: `app/src/rag/orchestrator.py`.
 
-## Текущий формат (v2)
+## Текущий формат (v6)
 1. Вход: вопрос пользователя + retrieved chunks + (опционально) visual evidence.
 2. Требование: ответ должен опираться на retrieved context.
 3. На выходе API возвращает:
@@ -18,6 +18,13 @@
 4. LLM **не должна** добавлять блоки `Основание`/`Источники` и маркеры вида `[1]`, `[2]`.
    Эти блоки добавляются backend-форматтером на основе структурированного `sources`.
 
+
+
+## Единый vision-шаблон для `/ask` и `/v1/chat/completions`
+- Выделена общая функция `build_vision_prompt(question, visual_evidence)` в `app/src/rag/prompt_builder.py`.
+- Одинаковый prompt-body для vision-ветки строится в orchestrator и используется обоими endpoint через общий вызов `build_prompt(...)`.
+- Системные сообщения из OpenAI-совместимого payload не подменяют этот шаблон: в `/v1/chat/completions` для RAG берётся только последнее `user`-сообщение (текст + image attachments).
+- Снапшот-проверка паритета добавлена в `app/tests/integration/test_vision_prompt_snapshot_parity.py`.
 ## Guardrails
 - Не выдумывать факты, отсутствующие в retrieved context.
 - При недостатке данных явно сообщать о нехватке контекста.
@@ -84,3 +91,5 @@
   "confidence": 0.68
 }
 ```
+
+- `v6` (2026-04-29): выделен общий `build_vision_prompt(...)`; синхронизирован prompt-body vision-ветки между `/ask` и `/v1/chat/completions` snapshot-тестом паритета.

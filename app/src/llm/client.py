@@ -11,6 +11,10 @@ class LlmClient:
         prompt: str,
         max_tokens: int = 512,
         temperature: float = 0.1,
+        top_p: float = 0.9,
+        frequency_penalty: float = 0.1,
+        presence_penalty: float = 0.05,
+        stop: list[str] | None = None,
         trace: dict | None = None,
     ) -> str:
         timeout = httpx.Timeout(
@@ -33,9 +37,9 @@ class LlmClient:
             ],
             'max_tokens': max_tokens,
             'temperature': temperature,
-            'top_p': 0.9,
-            'frequency_penalty': 0.1,
-            'presence_penalty': 0.05,
+            'top_p': top_p,
+            'frequency_penalty': frequency_penalty,
+            'presence_penalty': presence_penalty,
             'stream': False,
         }
 
@@ -56,6 +60,10 @@ class LlmClient:
                         prompt=prompt,
                         max_tokens=max_tokens,
                         temperature=temperature,
+                        top_p=top_p,
+                        frequency_penalty=frequency_penalty,
+                        presence_penalty=presence_penalty,
+                        stop=stop,
                         trace=trace,
                     )
                     if trace is not None:
@@ -67,9 +75,9 @@ class LlmClient:
             'prompt': prompt,
             'n_predict': max_tokens,
             'temperature': temperature,
-            'top_p': 0.9,
+            'top_p': top_p,
             'repeat_penalty': 1.15,
-            'stop': ['</s>'],
+            'stop': stop or ['</s>'],
         }
         completion_resp = httpx.post(f'{self.base_url}/completion', json=completion_payload, timeout=timeout)
         if trace is not None:
@@ -83,6 +91,10 @@ class LlmClient:
             prompt=prompt,
             max_tokens=max_tokens,
             temperature=temperature,
+            top_p=top_p,
+            frequency_penalty=frequency_penalty,
+            presence_penalty=presence_penalty,
+            stop=stop,
             trace=trace,
         )
         if trace is not None:
@@ -142,6 +154,10 @@ class LlmClient:
         prompt: str,
         max_tokens: int,
         temperature: float,
+        top_p: float,
+        frequency_penalty: float,
+        presence_penalty: float,
+        stop: list[str] | None = None,
         trace: dict | None = None,
     ) -> str:
         if not self._looks_truncated(answer):
@@ -172,6 +188,10 @@ class LlmClient:
             ],
             'max_tokens': continuation_budget,
             'temperature': max(0.0, min(temperature, 0.2)),
+            'top_p': top_p,
+            'frequency_penalty': frequency_penalty,
+            'presence_penalty': presence_penalty,
+            'stop': stop or ['</s>'],
             'stream': False,
         }
         if trace is not None:
