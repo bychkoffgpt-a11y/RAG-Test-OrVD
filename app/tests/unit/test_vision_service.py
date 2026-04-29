@@ -164,9 +164,9 @@ def test_analyze_single_image_skips_large_image(monkeypatch, tmp_path):
 
 def test_parse_vlm_json_valid_payload():
     service = VisionService()
-    parsed = service._parse_vlm_json('{"detected_text":"Error 500","objects":["button"],"numbers":["500"],"chart_points":[{"label":"A","value":"10"}],"confidence":0.9,"evidence_spans":["Error 500"]}')
+    parsed = service._parse_vlm_json('{"visible_facts":["Error 500"],"uncertain_facts":["button may be disabled"],"not_visible":[],"confidence":0.9}')
     assert parsed is not None
-    assert parsed.detected_text == 'Error 500'
+    assert parsed.visible_facts == ['Error 500']
 
 
 def test_run_vlm_repairs_invalid_json(monkeypatch, tmp_path):
@@ -192,7 +192,7 @@ def test_run_vlm_repairs_invalid_json(monkeypatch, tmp_path):
             self.calls += 1
             if self.calls == 1:
                 return 'not-json'
-            return '{"detected_text":"ok","objects":[],"numbers":[],"chart_points":[],"confidence":0.7,"evidence_spans":[]}'
+            return '{"visible_facts":["ok"],"uncertain_facts":[],"not_visible":[],"confidence":0.7}'
 
     class DummyTorch:
         class _NoGrad:
@@ -210,7 +210,7 @@ def test_run_vlm_repairs_invalid_json(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, 'PIL', type('P', (), {'Image': type('I', (), {'open': staticmethod(lambda *_: type('Img', (), {'convert': lambda self, _: self})())})})())
 
     result = service._run_vlm(str(image), question='q', deadline=None)
-    assert 'detected_text' in result
+    assert 'visible_facts' in result
 
 
 def test_normalize_for_scoring_handles_numbers_dates_units():
@@ -229,8 +229,23 @@ def test_detect_task_type_routes_chart_sign_text():
 
 def test_compose_structured_text_limits_chart_points(monkeypatch):
     service = VisionService()
-    monkeypatch.setattr('src.vision.service.settings.vision_chart_top_k_points', 2, raising=False)
-    raw = '{"detected_text":"d","objects":[],"numbers":[],"chart_points":[{"label":"A","value":"1"},{"label":"B","value":"2"},{"label":"C","value":"3"}],"confidence":0.9,"evidence_spans":[]}'
+    raw = '{"visible_facts":["A:1","B:2"],"uncertain_facts":["C maybe 3"],"not_visible":[],"confidence":0.9}'
     out = service._compose_structured_text(raw)
     assert 'a:1' in out and 'b:2' in out
-    assert 'c:3' not in out
+    assert 'c maybe 3' in out
+
+
+def test_parse_vlm_json_rejects_duplicate_fact_across_sections():
+    service = VisionService()
+    parsed = service._parse_vlm_json(
+        '{"visible_facts":["Error 500"],"uncertain_facts":[],"not_visible":["error 500"],"confidence":0.5}'
+    )
+    assert parsed is None
+
+
+def test_parse_vlm_json_rejects_not_visible_with_high_confidence():
+    service = VisionService()
+    parsed = service._parse_vlm_json(
+        '{"visible_facts":["Error 500"],"uncertain_facts":[],"not_visible":["нечитаемо"],"confidence":0.9}'
+    )
+    assert parsed is None
