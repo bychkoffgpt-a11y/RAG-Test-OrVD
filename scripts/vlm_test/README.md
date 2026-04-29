@@ -112,7 +112,9 @@ python3 probe_ask_vlm.py --api-url http://localhost:8000 \
 
 Запуск:
 ```bash
-python3 check_ask_trace.py --log-file /path/to/support-api.log
+LOG_FILE="/tmp/support-api_$(date +%F_%H-%M-%S).log"
+docker compose logs support-api > $LOG_FILE
+python3 check_ask_trace.py --log-file $LOG_FILE
 ```
 
 Интерпретация:
