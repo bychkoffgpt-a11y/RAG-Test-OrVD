@@ -17,7 +17,7 @@ from src.core.logging import configure_logging
 from src.core.request_context import get_request_id, reset_request_id, set_request_id
 from src.core.settings import settings
 from src.rag.orchestrator import RagOrchestrator
-from src.rag.vision.input_adapter import adapt_image_attachments
+from src.rag.vision.input_adapter import AttachmentNormalizationError, adapt_image_attachments, build_image_debug_info
 from src.rag.vision.response_formatter import format_runtime_response
 from src.telemetry.metrics import HTTP_LATENCY, HTTP_REQUESTS, metrics_response
 from src.vision.service import VisionService
@@ -113,31 +113,34 @@ def openai_compat(payload: dict, request: Request):
     messages = payload.get('messages', [])
     question = ''
     attachments: list[AttachmentItem] = []
-    for message in reversed(messages):
-        if message.get('role') != 'user':
-            continue
+    try:
+        for message in reversed(messages):
+            if message.get('role') != 'user':
+                continue
 
-        content = message.get('content', '')
-        extracted_attachments: list[AttachmentItem] = []
-        if isinstance(content, str):
-            question = content.strip()
-        elif isinstance(content, list):
-            decode_started = time.perf_counter()
-            text_parts = []
-            for part in content:
-                if isinstance(part, dict) and part.get('type') == 'text':
-                    text_parts.append(part.get('text', ''))
-            question = '\n'.join([p for p in text_parts if p]).strip()
-            extracted_attachments = adapt_image_attachments(message_content=content)
-            _diag_stage('decode_image', (time.perf_counter() - decode_started) * 1000.0)
+            content = message.get('content', '')
+            extracted_attachments: list[AttachmentItem] = []
+            if isinstance(content, str):
+                question = content.strip()
+            elif isinstance(content, list):
+                decode_started = time.perf_counter()
+                text_parts = []
+                for part in content:
+                    if isinstance(part, dict) and part.get('type') == 'text':
+                        text_parts.append(part.get('text', ''))
+                question = '\n'.join([p for p in text_parts if p]).strip()
+                extracted_attachments = adapt_image_attachments(message_content=content)
+                _diag_stage('decode_image', (time.perf_counter() - decode_started) * 1000.0)
 
-        if extracted_attachments and not attachments:
-            attachments = extracted_attachments
-
-        if question:
-            if extracted_attachments:
+            if extracted_attachments and not attachments:
                 attachments = extracted_attachments
-            break
+
+            if question:
+                if extracted_attachments:
+                    attachments = extracted_attachments
+                break
+    except AttachmentNormalizationError as exc:
+        return JSONResponse(status_code=400, content={'detail': str(exc)})
 
     is_vision_only = bool(attachments) and not question.strip()
     if not question.strip():
@@ -187,6 +190,9 @@ def openai_compat(payload: dict, request: Request):
             )
         rag_scope = str(payload.get('rag_scope', 'all'))
         ask_payload = AskRequest(question=question, top_k=8, scope=rag_scope, attachments=attachments)
+        expected_debug = build_image_debug_info(
+            ask_payload.attachments, trace_id=trace_id, endpoint='/v1/chat/completions', stage='endpoint_input'
+        )
         try:
             answer = orch.answer(
                 ask_payload,
@@ -199,6 +205,7 @@ def openai_compat(payload: dict, request: Request):
                 presence_penalty=presence_penalty,
                 stop=stop,
                 stage_logger=_diag_stage,
+                expected_image_debug=expected_debug,
             )
         except TypeError:
             answer = orch.answer(ask_payload, max_tokens=max_tokens, temperature=temperature, endpoint='/v1/chat/completions')
@@ -208,6 +215,8 @@ def openai_compat(payload: dict, request: Request):
         return JSONResponse(status_code=504, content={'detail': 'Таймаут запроса к LLM. Попробуйте сократить вопрос.'})
     except httpx.HTTPError as exc:
         return JSONResponse(status_code=502, content={'detail': f'Ошибка LLM backend: {exc}'})
+    except AttachmentNormalizationError as exc:
+        return JSONResponse(status_code=400, content={'detail': str(exc)})
 
     logger.info(
         'openai_compat_generation_params',
