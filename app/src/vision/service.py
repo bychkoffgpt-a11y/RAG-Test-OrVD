@@ -179,7 +179,7 @@ class VisionService:
         extracted_text = self._extract_image_text_or_caption(image_path, question=question, mode=mode, deadline=deadline)
         summary = self._build_summary(image_path, extracted_text, mode=mode)
         confidence = self._estimate_confidence(extracted_text)
-        ocr_text = extracted_text if mode == 'ocr' else ''
+        ocr_text = extracted_text
 
         logger.info(
             'vision_image_processed',
@@ -504,7 +504,10 @@ class VisionService:
         if 'доступ запрещен' in lowered or 'access denied' in lowered:
             hints.append('Похоже на проблему с доступом')
         if not hints:
-            hints.append('Скриншот обработан, явных сигнатур критической ошибки не найдено')
+            if extracted_text.strip():
+                hints.append('Скриншот обработан, обнаружены визуальные элементы')
+            else:
+                hints.append('Скриншот обработан, текст не распознан')
 
         file_hint = Path(image_path).name
         mode_hint = 'OCR' if mode == 'ocr' else 'VLM'
