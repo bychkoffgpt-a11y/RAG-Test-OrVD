@@ -5,6 +5,7 @@ import json
 import math
 import re
 import statistics
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -12,13 +13,16 @@ from typing import Any, Dict, List, Tuple
 # Normalization helpers
 # ------------------------------
 def norm(s: str) -> str:
-    s = (s or "").lower().replace("ё", "е")
+    s = unicodedata.normalize("NFKC", (s or "")).lower().replace("ё", "е")
+    s = normalize_dates_tokens(s)
+    s = normalize_currency_tokens(s)
+    s = re.sub(r"[^\w\s\-\+\.:/%$]", " ", s, flags=re.UNICODE)
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
 def tokenize(s: str) -> List[str]:
     s = norm(s)
-    return re.findall(r"[a-zа-я0-9\-\+\.:/%$]+", s, flags=re.IGNORECASE)
+    return re.findall(r"[a-zа-я0-9\-\+\.:%$]+", s, flags=re.IGNORECASE)
 
 # ------------------------------
 # Alias dictionary (can be extended via --aliases)
@@ -35,16 +39,37 @@ DEFAULT_ALIASES = {
     "chart": ["chart", "diagram", "диаграмма", "график"],
     "bar": ["bar", "столбчат", "гистограмм"],
     "line": ["line", "линейн"],
-    "pie": ["pie", "кругов"],
+    "pie": ["pie", "кругов", "круговая", "секторн", "секторная", "sector"],
     "largest": ["largest", "biggest", "самый большой", "наибольший", "максимальный"],
     "smallest": ["smallest", "least", "самый маленький", "минимальный", "наименьший"],
     "right": ["right", "вправо", "справа"],
     "left": ["left", "влево", "слева"],
     "text": ["text", "текст", "надпись"],
     "table": ["table", "таблица", "табличн", "csv"],
+    "amount": ["amount", "sum", "total", "сумма", "итог"],
+    "schedule": ["schedule", "расписание", "заметка", "note"],
     "open": ["open", "открыт", "открыто"],
     "meeting": ["meeting", "встреча", "митинг"],
 }
+
+RU_MONTHS = {
+    "января": "01", "февраля": "02", "марта": "03", "апреля": "04", "мая": "05", "июня": "06",
+    "июля": "07", "августа": "08", "сентября": "09", "октября": "10", "ноября": "11", "декабря": "12",
+}
+
+def normalize_currency_tokens(s: str) -> str:
+    # 1 234,56 -> 1234.56 ; 849,90 -> 849.90
+    s = re.sub(r"(?<!\d)(\d{1,3}(?:[\s\u00A0]\d{3})+)[,\.](\d{2})(?!\d)", lambda m: f"{m.group(1).replace(' ', '')}.{m.group(2)}", s)
+    s = re.sub(r"(?<!\d)(\d+),(\d{2})(?!\d)", r"\1.\2", s)
+    return s
+
+def normalize_dates_tokens(s: str) -> str:
+    # 15.05.2026 / 15/05/2026 -> 2026-05-15
+    s = re.sub(r"\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b", lambda m: f"{int(m.group(3)):04d}-{int(m.group(2)):02d}-{int(m.group(1)):02d}", s)
+    # 15 мая 2026 -> 2026-05-15
+    for mon, mm in RU_MONTHS.items():
+        s = re.sub(rf"\b(\d{{1,2}})\s+{mon}\s+(\d{{4}})\b", lambda m: f"{int(m.group(2)):04d}-{mm}-{int(m.group(1)):02d}", s)
+    return s
 
 STOPWORDS = {
     "есть","это","на","в","и","по","с","как","для","из","что","ли","не","нет",
@@ -171,6 +196,17 @@ def score_fact_partial(answer: str, fact: str, aliases: Dict[str, List[str]]) ->
         "ratio": ratio
     }
 
+def score_fact_hard(answer: str, fact: str, aliases: Dict[str, List[str]]) -> Tuple[float, Dict[str, Any]]:
+    anchors = extract_anchors(fact)
+    if not anchors:
+        return 0.0, {"anchors": [], "matched": [], "ratio": 0.0}
+    matched = []
+    for a in anchors:
+        if text_contains_any(answer, [a]):
+            matched.append(a)
+    hard = 1.0 if len(matched) == len(anchors) else 0.0
+    return hard, {"anchors": anchors, "matched": matched, "ratio": hard}
+
 def classify_group(case_id: str, url: str) -> str:
     s = norm(case_id + " " + (url or ""))
     # Heuristics tailored to provided dataset ids/urls
@@ -250,21 +286,21 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         gold_hard = 0
         gold_details = []
         for gf in golden:
+            hard_sc, _ = score_fact_hard(ans, gf, aliases)
             sc, det = score_fact_partial(ans, gf, aliases)
             gold_scores.append(sc)
-            if sc >= hit_threshold:
-                gold_hard += 1
-            gold_details.append({"fact": gf, "score": round(sc,4), "matched": det["matched"], "anchors": det["anchors"]})
+            gold_hard += int(hard_sc)
+            gold_details.append({"fact": gf, "hard": int(hard_sc), "partial_score": round(sc,4), "matched": det["matched"], "anchors": det["anchors"]})
 
         neg_scores = []
         neg_hard = 0
         neg_details = []
         for nf in negative:
+            hard_sc, _ = score_fact_hard(ans, nf, aliases)
             sc, det = score_fact_partial(ans, nf, aliases)
             neg_scores.append(sc)
-            if sc >= hit_threshold:
-                neg_hard += 1
-            neg_details.append({"fact": nf, "score": round(sc,4), "matched": det["matched"], "anchors": det["anchors"]})
+            neg_hard += int(hard_sc)
+            neg_details.append({"fact": nf, "hard": int(hard_sc), "partial_score": round(sc,4), "matched": det["matched"], "anchors": det["anchors"]})
 
         case_gold_partial = (sum(gold_scores) / len(golden)) if golden else 0.0
         case_gold_hard_recall = (gold_hard / len(golden)) if golden else 0.0
