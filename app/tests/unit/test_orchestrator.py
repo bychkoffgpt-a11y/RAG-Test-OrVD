@@ -1,5 +1,14 @@
+import pytest
+
 from src.api.schemas import AskRequest, AttachmentItem
+from src.core.settings import settings
 from src.rag.orchestrator import RagOrchestrator
+
+
+@pytest.fixture(autouse=True)
+def _isolate_rag_trace_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, 'rag_ui_trace_enabled', True)
+    monkeypatch.setattr(settings, 'rag_ui_trace_dir', str(tmp_path / 'rag_ui_traces'))
 
 
 class _NoContextRetriever:
