@@ -527,3 +527,7 @@ pytest -q --cov=src --cov-report=term-missing
 ./scripts/run_tests_prod.sh --groups integration   # только integration
 ./scripts/run_tests_prod.sh --groups unit,integration --coverage
 ```
+
+Правило для unit-тестов: тесты не должны зависеть от системных путей записи trace-карточек.
+Используйте `settings.rag_ui_trace_enabled=False`, временную writable директорию (`settings.rag_ui_trace_dir=tmp_path`)
+или подмену `orch.trace_writer` на no-op/stub writer.
