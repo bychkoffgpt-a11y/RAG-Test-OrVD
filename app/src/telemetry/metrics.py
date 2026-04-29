@@ -16,7 +16,7 @@ HTTP_LATENCY = Histogram(
 RAG_STAGE_LATENCY = Histogram(
     'rag_stage_duration_seconds',
     'Длительность отдельных этапов RAG-пайплайна',
-    ['endpoint', 'stage', 'has_attachments', 'scope', 'vision_mode'],
+    ['endpoint', 'stage', 'has_attachments', 'scope', 'vision_mode', 'case_type'],
 )
 
 
@@ -28,6 +28,7 @@ def observe_rag_stage_latency(
     scope: str,
     vision_mode: str,
     duration_sec: float,
+    case_type: str,
 ) -> None:
     RAG_STAGE_LATENCY.labels(
         endpoint=endpoint,
@@ -35,6 +36,7 @@ def observe_rag_stage_latency(
         has_attachments='1' if has_attachments else '0',
         scope=scope,
         vision_mode=vision_mode,
+        case_type=case_type,
     ).observe(max(duration_sec, 0.0))
 
 

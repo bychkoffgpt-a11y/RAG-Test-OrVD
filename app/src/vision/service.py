@@ -4,6 +4,7 @@ import os
 import re
 import threading
 import time
+import tempfile
 import unicodedata
 from pathlib import Path
 from typing import Iterable
@@ -196,12 +197,21 @@ class VisionService:
             )
 
         task_type = self._detect_task_type(question=question, image_path=image_path)
+        effective_image_path = image_path
+        cleanup_path: str | None = None
+        if mode == 'vlm' and task_type == 'chart':
+            effective_image_path, cleanup_path = self._prepare_chart_image_for_vlm(image_path)
         extracted_text = self._extract_image_text_or_caption(
-            image_path,
+            effective_image_path,
             question=self._build_task_instruction(question=question, task_type=task_type),
             mode=mode,
             deadline=deadline,
         )
+        if cleanup_path:
+            try:
+                os.remove(cleanup_path)
+            except OSError:
+                logger.debug('vision_chart_temp_cleanup_failed', extra={'image_path': cleanup_path})
         summary = self._build_summary(image_path, extracted_text, mode=mode)
         confidence = self._estimate_confidence(extracted_text)
         ocr_text = extracted_text if mode == 'ocr' else self._compose_structured_text(extracted_text)
@@ -225,6 +235,33 @@ class VisionService:
             confidence=confidence,
             task_type=task_type,
         )
+
+    @staticmethod
+    def _prepare_chart_image_for_vlm(image_path: str) -> tuple[str, str | None]:
+        max_w = max(int(settings.vision_chart_downscale_max_width), 0)
+        max_h = max(int(settings.vision_chart_downscale_max_height), 0)
+        if max_w <= 0 or max_h <= 0:
+            return image_path, None
+        try:
+            from PIL import Image
+
+            with Image.open(image_path) as img:
+                width, height = img.size
+                if width <= max_w and height <= max_h:
+                    return image_path, None
+                ratio = min(max_w / float(width), max_h / float(height))
+                target_size = (max(int(width * ratio), 1), max(int(height * ratio), 1))
+                resized = img.convert('RGB').resize(target_size, Image.Resampling.LANCZOS)
+                with tempfile.NamedTemporaryFile(prefix='chart_ds_', suffix='.jpg', delete=False) as tmp:
+                    resized.save(tmp.name, format='JPEG', quality=92, optimize=True)
+                    logger.info(
+                        'vision_chart_image_downscaled',
+                        extra={'image_path': image_path, 'from': f'{width}x{height}', 'to': f'{target_size[0]}x{target_size[1]}'},
+                    )
+                    return tmp.name, tmp.name
+        except Exception:
+            logger.warning('vision_chart_image_downscale_failed', extra={'image_path': image_path}, exc_info=True)
+            return image_path, None
 
     @staticmethod
     def _resolve_mode(*, for_ingest: bool) -> str:
