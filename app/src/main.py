@@ -16,9 +16,9 @@ from src.api.schemas import AskRequest, AttachmentItem
 from src.core.logging import configure_logging
 from src.core.request_context import reset_request_id, set_request_id
 from src.core.settings import settings
-from src.rag.answer_formatter import append_grounding_markdown, append_sources_markdown
 from src.rag.orchestrator import RagOrchestrator
 from src.rag.vision.input_adapter import adapt_image_attachments
+from src.rag.vision.response_formatter import format_runtime_response
 from src.telemetry.metrics import HTTP_LATENCY, HTTP_REQUESTS, metrics_response
 from src.vision.service import VisionService
 
@@ -208,10 +208,8 @@ def openai_compat(payload: dict, request: Request):
     model = payload.get('model', 'local-rag-model')
     is_stream = payload.get('stream') is True
 
-    rendered_answer = answer.answer
-    if not is_vision_only:
-        rendered_answer = append_grounding_markdown(rendered_answer, answer.sources, base_url=str(request.base_url))
-        rendered_answer = append_sources_markdown(rendered_answer, answer.sources, base_url=str(request.base_url))
+    formatted = format_runtime_response(answer, base_url=str(request.base_url), is_vision_only=is_vision_only)
+    rendered_answer = formatted['answer']
     logger.info(
         'openai_compat_answer_ready',
         extra={
@@ -271,9 +269,9 @@ def openai_compat(payload: dict, request: Request):
                 'finish_reason': 'stop',
             }
         ],
-        'sources': [s.model_dump() for s in answer.sources],
-        'images': answer.images,
-        'visual_evidence': [item.model_dump() for item in answer.visual_evidence],
+        'sources': formatted['sources'],
+        'images': formatted['images'],
+        'visual_evidence': formatted['visual_evidence'],
     }
 
 
