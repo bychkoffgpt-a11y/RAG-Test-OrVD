@@ -33,9 +33,23 @@ class VlmStructuredResponse(BaseModel):
 
     @staticmethod
     def _normalize_fact(value: str) -> str:
-        return re.sub(r'\s+', ' ', (value or '').strip().lower())
+        normalized = unicodedata.normalize('NFKC', (value or '').strip().lower())
+        normalized = re.sub(r'[\u2012\u2013\u2014\u2212]', '-', normalized)
+        normalized = normalized.replace('→', '->').replace('←', '<-').replace('↔', '<->')
+        normalized = re.sub(r'(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})', r'\3-\2-\1', normalized)
+        normalized = re.sub(r'(?<=\d)[\s,](?=\d{3}\b)', '', normalized)
+        normalized = re.sub(r'\s+', ' ', normalized)
+        return normalized
 
     def model_post_init(self, __context) -> None:
+        if self.confidence < 0.5:
+            uncertain = [item for item in self.uncertain_facts if item.strip()]
+            uncertain.extend([f'{item} (low confidence)' for item in self.visible_facts if item.strip()])
+            uncertain.extend([f'{item} (low confidence: not visible)' for item in self.not_visible if item.strip()])
+            self.visible_facts = []
+            self.not_visible = []
+            self.uncertain_facts = uncertain
+
         normalized_visible = {self._normalize_fact(item) for item in self.visible_facts if item.strip()}
         normalized_uncertain = {self._normalize_fact(item) for item in self.uncertain_facts if item.strip()}
         normalized_not_visible = {self._normalize_fact(item) for item in self.not_visible if item.strip()}
@@ -234,6 +248,7 @@ class VisionService:
         summary = self._build_summary(image_path, extracted_text, mode=mode)
         confidence = self._estimate_confidence(extracted_text)
         ocr_text = extracted_text if mode == 'ocr' else self._compose_structured_text(extracted_text)
+        parsed = self._parse_vlm_json(extracted_text) if mode == 'vlm' else None
 
         logger.info(
             'vision_image_processed',
@@ -253,6 +268,9 @@ class VisionService:
             summary=summary,
             confidence=confidence,
             task_type=task_type,
+            visible_facts=(parsed.visible_facts if parsed else []),
+            uncertain_facts=(parsed.uncertain_facts if parsed else []),
+            not_visible=(parsed.not_visible if parsed else []),
         )
 
     @staticmethod
