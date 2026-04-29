@@ -14,7 +14,7 @@ from src.api.ingest_b import router as ingest_b_router
 from src.api.sources import router as sources_router
 from src.api.schemas import AskRequest, AttachmentItem
 from src.core.logging import configure_logging
-from src.core.request_context import reset_request_id, set_request_id
+from src.core.request_context import get_request_id, reset_request_id, set_request_id
 from src.core.settings import settings
 from src.rag.orchestrator import RagOrchestrator
 from src.rag.vision.input_adapter import adapt_image_attachments
@@ -87,6 +87,21 @@ def metrics():
 @app.post('/v1/chat/completions')
 def openai_compat(payload: dict, request: Request):
     started = time.perf_counter()
+    trace_id = get_request_id()
+    case_id = str(payload.get('case_id') or trace_id)
+    endpoint = '/v1/chat/completions'
+
+    def _diag_stage(stage: str, stage_ms: float) -> None:
+        logger.info(
+            'chat_diag_stage',
+            extra={
+                'trace_id': trace_id,
+                'endpoint': endpoint,
+                'case_id': case_id,
+                'stage': stage,
+                'stage_ms': round(stage_ms, 3),
+            },
+        )
     logger.info(
         'openai_compat_request_received',
         extra={
@@ -107,12 +122,14 @@ def openai_compat(payload: dict, request: Request):
         if isinstance(content, str):
             question = content.strip()
         elif isinstance(content, list):
+            decode_started = time.perf_counter()
             text_parts = []
             for part in content:
                 if isinstance(part, dict) and part.get('type') == 'text':
                     text_parts.append(part.get('text', ''))
             question = '\n'.join([p for p in text_parts if p]).strip()
             extracted_attachments = adapt_image_attachments(message_content=content)
+            _diag_stage('decode_image', (time.perf_counter() - decode_started) * 1000.0)
 
         if extracted_attachments and not attachments:
             attachments = extracted_attachments
@@ -181,6 +198,7 @@ def openai_compat(payload: dict, request: Request):
                 frequency_penalty=frequency_penalty,
                 presence_penalty=presence_penalty,
                 stop=stop,
+                stage_logger=_diag_stage,
             )
         except TypeError:
             answer = orch.answer(ask_payload, max_tokens=max_tokens, temperature=temperature, endpoint='/v1/chat/completions')
@@ -208,7 +226,9 @@ def openai_compat(payload: dict, request: Request):
     model = payload.get('model', 'local-rag-model')
     is_stream = payload.get('stream') is True
 
+    formatter_started = time.perf_counter()
     formatted = format_runtime_response(answer, base_url=str(request.base_url), is_vision_only=is_vision_only)
+    _diag_stage('formatter', (time.perf_counter() - formatter_started) * 1000.0)
     rendered_answer = formatted['answer']
     logger.info(
         'openai_compat_answer_ready',

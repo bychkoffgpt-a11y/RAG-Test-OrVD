@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Callable
 
 from src.api.schemas import AskRequest, AskResponse, SourceItem
 from src.core.request_context import get_request_id
@@ -60,6 +61,7 @@ class RagOrchestrator:
         frequency_penalty: float = 0.1,
         presence_penalty: float = 0.05,
         stop: list[str] | None = None,
+        stage_logger: Callable[[str, float], None] | None = None,
     ) -> AskResponse:
         started = time.perf_counter()
         trace_id = get_request_id()
@@ -101,10 +103,26 @@ class RagOrchestrator:
         vision_started = time.perf_counter()
         _trace('image_preprocess_start')
         raw_visual = []
+        per_request_vision_cache: dict[str, dict] = {}
         if payload.attachments:
-            raw_visual = self.vision.analyze_attachments(payload.attachments, payload.question)
+            deduped_attachments = []
+            for attachment in payload.attachments:
+                key = attachment.image_path
+                if key in per_request_vision_cache:
+                    continue
+                deduped_attachments.append(attachment)
+                per_request_vision_cache[key] = {}
+            analyzed = self.vision.analyze_attachments(deduped_attachments, payload.question)
+            for item in analyzed:
+                as_dict = item.model_dump() if hasattr(item, 'model_dump') else dict(item)
+                image_path = as_dict.get('image_path')
+                if image_path:
+                    per_request_vision_cache[image_path] = as_dict
+            raw_visual = [per_request_vision_cache.get(att.image_path, {}) for att in payload.attachments]
         visual_evidence = [item.model_dump() if hasattr(item, 'model_dump') else dict(item) for item in raw_visual]
         vision_duration = time.perf_counter() - vision_started
+        if stage_logger:
+            stage_logger('vision_infer', vision_duration * 1000.0)
         _trace('image_preprocess_end', latency_ms=round(vision_duration * 1000.0, 3))
         self._observe_stage(endpoint=endpoint, stage='vision', duration_sec=vision_duration, payload=payload)
         logger.info(
@@ -216,6 +234,8 @@ class RagOrchestrator:
         ]
         images = collect_images(contexts)
         postprocess_duration = time.perf_counter() - postprocess_started
+        if stage_logger:
+            stage_logger('postprocess', postprocess_duration * 1000.0)
         _trace('parse_end', latency_ms=round(postprocess_duration * 1000.0, 3))
         self._observe_stage(endpoint=endpoint, stage='post_formatting', duration_sec=postprocess_duration, payload=payload)
 
