@@ -1,6 +1,31 @@
 #!/usr/bin/env sh
 set -eu
 
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  cat <<'EOF'
+Usage: /usr/local/bin/llm_server_entrypoint.sh [llama-server args...]
+
+Container entrypoint for llama-server with validation and optional log sanitization.
+
+What this script does:
+  1) Unsets LLAMA_ARG_HOST to avoid duplicate host warnings.
+  2) Validates LLM_N_GPU_LAYERS (must be non-negative integer).
+  3) Warns if GPU layers are requested but nvidia-smi is unavailable.
+  4) Locates llama-server binary (PATH or /app/llama-server).
+  5) If LLM_LOG_SANITIZER=1 and sanitizer is available, starts llama-server
+     through /opt/llm_log_sanitizer.py.
+
+Environment variables:
+  LLM_N_GPU_LAYERS   Number of GPU layers for llama.cpp (default: 99).
+  LLM_LOG_SANITIZER  1 to enable sanitizer wrapper, 0 to disable (default: 1).
+
+Examples:
+  /usr/local/bin/llm_server_entrypoint.sh --host 0.0.0.0 --port 8080 -m /models/llm.gguf
+  LLM_LOG_SANITIZER=0 /usr/local/bin/llm_server_entrypoint.sh -m /models/llm.gguf
+EOF
+  exit 0
+fi
+
 # Avoid duplicate host configuration warnings from llama-server.
 unset LLAMA_ARG_HOST || true
 

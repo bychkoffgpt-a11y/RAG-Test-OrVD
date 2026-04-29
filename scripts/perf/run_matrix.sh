@@ -1,6 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  cat <<'EOF'
+Usage: ./scripts/perf/run_matrix.sh [image_path]
+
+Запускает матрицу из 4 benchmark-кейсов:
+  1) ocr + reranker on
+  2) ocr + reranker off
+  3) vlm + reranker on
+  4) vlm + reranker off
+
+Argument:
+  image_path       Путь к тестовому изображению внутри контейнера
+                   (default: /data/runtime_uploads/screen_500kb.png)
+
+Скрипт последовательно вызывает:
+  ./scripts/perf/run_benchmark_case.sh <mode> <reranker> <image_path>
+
+Examples:
+  ./scripts/perf/run_matrix.sh
+  ./scripts/perf/run_matrix.sh /data/runtime_uploads/screen_1mb.png
+
+Options:
+  -h, --help      Показать эту справку и выйти.
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
 IMAGE_PATH="${1:-/data/runtime_uploads/screen_500kb.png}"
 
 declare -a CASES=(

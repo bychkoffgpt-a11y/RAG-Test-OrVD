@@ -1,6 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  cat <<'EOF'
+Usage: ./scripts/download_models_online.sh
+
+Загружает модельные артефакты в локальные директории models/* для online-подготовки
+офлайн-контура. Скрипт можно запускать повторно: уже скачанные корректные файлы
+будут пропущены.
+
+Что скачивается:
+  - LLM GGUF файл (LLM_HF_REPO + LLM_MODEL_FILE)
+  - Vision модель (VISION_HF_REPO)
+  - Embedding модель (EMBEDDING_HF_REPO)
+  - Reranker модель (RERANKER_HF_REPO)
+  - PaddleOCR det/rec/cls веса (OCR_*_URL)
+
+Требуемые утилиты:
+  hf, curl, tar, find
+
+Ключевые переменные окружения:
+  MODELS_ROOT_DIR, LLM_MODEL_DIR, VISION_MODEL_DIR, EMBEDDING_MODEL_DIR,
+  RERANKER_MODEL_DIR, OCR_MODEL_ROOT_DIR,
+  LLM_HF_REPO, LLM_MODEL_FILE, VISION_HF_REPO, EMBEDDING_HF_REPO,
+  RERANKER_HF_REPO, OCR_DET_URL, OCR_REC_URL, OCR_CLS_URL.
+
+Примеры:
+  ./scripts/download_models_online.sh
+  LLM_MODEL_FILE=Qwen2.5-7B-Instruct-Q8_0.gguf ./scripts/download_models_online.sh
+EOF
+  exit 0
+fi
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ROOT_DIR}/.env"
 TMP_DIR="$(mktemp -d)"

@@ -1,8 +1,45 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  cat <<'EOF'
+Usage: ./scripts/perf/switch_mode.sh <vision_mode> <reranker_mode>
+
+Обновляет .env и перезапускает support-api для переключения режима vision и reranker.
+
+Arguments:
+  vision_mode      ocr | vlm
+  reranker_mode    on  | off
+
+Что делает скрипт:
+  1) Проверяет входные аргументы и наличие .env.
+  2) Устанавливает VISION_RUNTIME_MODE и RETRIEVAL_USE_RERANKER в .env.
+  3) Пересоздаёт контейнер support-api.
+  4) Ждёт readiness endpoint (/health) до 30 секунд.
+  5) Показывает эффективные значения переменных в контейнере.
+
+Examples:
+  ./scripts/perf/switch_mode.sh ocr on
+  ./scripts/perf/switch_mode.sh vlm off
+
+Options:
+  -h, --help      Показать эту справку и выйти.
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
 VISION_MODE="${1:-}"
 RERANKER_MODE="${2:-}"
+
+if [[ -z "$VISION_MODE" || -z "$RERANKER_MODE" ]]; then
+  echo "ERROR: missing required arguments." >&2
+  usage
+  exit 1
+fi
 
 if [[ ! "$VISION_MODE" =~ ^(ocr|vlm)$ ]]; then
   echo "ERROR: VISION mode must be 'ocr' or 'vlm'"
