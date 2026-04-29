@@ -7,6 +7,8 @@ from src.main import app
 import src.main as main_module
 import src.api.ask as ask_module
 
+from .vision_eval import evaluate_case
+
 
 @dataclass
 class _DummySource:
@@ -76,13 +78,7 @@ class _CaptureOrchestrator:
         return _DummyAnswer(answer=answer_text, sources=[_DummySource()], images=[], visual_evidence=visual)
 
 
-def _recall(answer_text: str, golden_facts: list[str]) -> float:
-    hay = answer_text.lower()
-    hits = sum(1 for fact in golden_facts if fact.lower() in hay)
-    return hits / len(golden_facts) if golden_facts else 0.0
-
-
-def test_multimodal_payload_and_recall_parity_between_ask_and_chat(monkeypatch):
+def test_multimodal_payload_and_quality_parity_between_ask_and_chat(monkeypatch):
     dummy = _CaptureOrchestrator()
     monkeypatch.setattr(main_module, 'orch', dummy)
     monkeypatch.setattr(ask_module, 'orch', dummy)
@@ -92,15 +88,24 @@ def test_multimodal_payload_and_recall_parity_between_ask_and_chat(monkeypatch):
         {
             'image_path': '/tmp/tc_marker.png',
             'golden_facts': ['ERR-9A7K-UNIQUE', '500'],
+            'forbidden_facts': ['stacktrace', 'database corrupted'],
         },
         {
             'image_path': '/tmp/tc_ui_form.png',
             'golden_facts': ['UHOP', 'validation'],
+            'forbidden_facts': ['kernel panic', 'network ddos'],
+        },
+        {
+            'image_path': '/tmp/tc_unknown.png',
+            'golden_facts': ['generic', 'visual'],
+            'forbidden_facts': ['password leaked', 'ransomware'],
         },
     ]
 
-    ask_scores = []
-    chat_scores = []
+    ask_recall_scores = []
+    chat_recall_scores = []
+    ask_hallucination_scores = []
+    chat_hallucination_scores = []
 
     for case in cases:
         ask_resp = client.post(
@@ -112,7 +117,13 @@ def test_multimodal_payload_and_recall_parity_between_ask_and_chat(monkeypatch):
             },
         )
         assert ask_resp.status_code == 200
-        ask_scores.append(_recall(ask_resp.json()['answer'], case['golden_facts']))
+        ask_metrics = evaluate_case(
+            answer_text=ask_resp.json()['answer'],
+            golden_facts=case['golden_facts'],
+            forbidden_facts=case['forbidden_facts'],
+        )
+        ask_recall_scores.append(ask_metrics.recall)
+        ask_hallucination_scores.append(ask_metrics.hallucination)
 
         chat_resp = client.post(
             '/v1/chat/completions',
@@ -136,9 +147,15 @@ def test_multimodal_payload_and_recall_parity_between_ask_and_chat(monkeypatch):
         )
         assert chat_resp.status_code == 200
         chat_answer = chat_resp.json()['choices'][0]['message']['content']
-        chat_scores.append(_recall(chat_answer, case['golden_facts']))
+        chat_metrics = evaluate_case(
+            answer_text=chat_answer,
+            golden_facts=case['golden_facts'],
+            forbidden_facts=case['forbidden_facts'],
+        )
+        chat_recall_scores.append(chat_metrics.recall)
+        chat_hallucination_scores.append(chat_metrics.hallucination)
 
-    assert len(dummy.calls) == 4
+    assert len(dummy.calls) == len(cases) * 2
     ask_call, chat_call = dummy.calls[0], dummy.calls[1]
     assert ask_call['endpoint'] == '/ask'
     assert chat_call['endpoint'] == '/v1/chat/completions'
@@ -148,14 +165,19 @@ def test_multimodal_payload_and_recall_parity_between_ask_and_chat(monkeypatch):
     assert chat_call['max_tokens'] == 256
     assert chat_call['temperature'] == 0.0
 
-    ask_avg = sum(ask_scores) / len(ask_scores)
-    chat_avg = sum(chat_scores) / len(chat_scores)
-    min_recall = 0.6
-    allowed_gap = 0.10
+    ask_recall_avg = sum(ask_recall_scores) / len(ask_recall_scores)
+    chat_recall_avg = sum(chat_recall_scores) / len(chat_recall_scores)
+    ask_hallucination_avg = sum(ask_hallucination_scores) / len(ask_hallucination_scores)
+    chat_hallucination_avg = sum(chat_hallucination_scores) / len(chat_hallucination_scores)
 
-    assert ask_avg >= min_recall
-    assert chat_avg >= min_recall
-    assert abs(chat_avg - ask_avg) <= allowed_gap
+    min_recall = 0.6
+    recall_gap_threshold_pp = 0.10
+
+    assert ask_recall_avg >= min_recall
+    assert chat_recall_avg >= min_recall
+    assert (ask_recall_avg - chat_recall_avg) <= recall_gap_threshold_pp
+    assert ask_hallucination_avg == 0.0
+    assert chat_hallucination_avg == 0.0
 
 
 def test_chat_message_content_image_parts_are_not_lost(monkeypatch):
