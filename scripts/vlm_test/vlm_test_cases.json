@@ -1,0 +1,170 @@
+[
+  {
+    "id": "img01_stop_sign",
+    "url": "https://dummyimage.com/800x500/ffffff/000000.png&text=STOP+SIGN",
+    "golden_facts": [
+      "На изображении есть крупный текст STOP SIGN",
+      "Фон светлый (белый)",
+      "Текст тёмный/чёрный",
+      "Текст расположен по центру"
+    ],
+    "negative_facts": [
+      "На изображении есть человек",
+      "На изображении есть автомобиль"
+    ]
+  },
+  {
+    "id": "img02_invoice_text",
+    "url": "https://dummyimage.com/1000x700/f5f5f5/111111.png&text=INVOICE%0AID%3A+A-1024%0ATOTAL%3A+%24849.90%0ADUE%3A+2026-05-15",
+    "golden_facts": [
+      "Есть заголовок INVOICE",
+      "Есть ID A-1024",
+      "Есть сумма 849.90",
+      "Есть дата 2026-05-15"
+    ],
+    "negative_facts": [
+      "Есть логотип компании",
+      "Есть фотография товара"
+    ]
+  },
+  {
+    "id": "img03_warning_label",
+    "url": "https://dummyimage.com/900x500/fff3cd/000000.png&text=WARNING%3A+HIGH+VOLTAGE",
+    "golden_facts": [
+      "Есть слово WARNING",
+      "Есть фраза HIGH VOLTAGE",
+      "Фон жёлтый/светло-жёлтый",
+      "Текст контрастный"
+    ],
+    "negative_facts": [
+      "Есть таблица с числами",
+      "Есть карта местности"
+    ]
+  },
+  {
+    "id": "img04_multiline_mixed",
+    "url": "https://dummyimage.com/1000x600/e8f0fe/1a237e.png&text=Room+12B%0AStatus%3A+OPEN%0ACapacity%3A+42",
+    "golden_facts": [
+      "Есть Room 12B",
+      "Есть Status OPEN",
+      "Есть Capacity 42",
+      "Текст в несколько строк"
+    ],
+    "negative_facts": [
+      "Есть штрихкод",
+      "Есть портрет человека"
+    ]
+  },
+  {
+    "id": "img05_chart_sales_q",
+    "url": "https://quickchart.io/chart?c={type:'bar',data:{labels:['Q1','Q2','Q3','Q4'],datasets:[{label:'Sales',data:[12,19,7,15]}]}}",
+    "golden_facts": [
+      "Это столбчатая диаграмма",
+      "Есть 4 категории: Q1 Q2 Q3 Q4",
+      "Q2 самый высокий столбец",
+      "Q3 самый низкий столбец"
+    ],
+    "negative_facts": [
+      "Это круговая диаграмма",
+      "На графике 12 категорий"
+    ]
+  },
+  {
+    "id": "img06_chart_compare_ab",
+    "url": "https://quickchart.io/chart?c={type:'bar',data:{labels:['A','B','C'],datasets:[{label:'2025',data:[30,10,20]},{label:'2026',data:[25,15,22]}]}}",
+    "golden_facts": [
+      "Столбчатая диаграмма с 2 наборами данных",
+      "Категории A B C",
+      "Для A значение 2025 выше чем 2026",
+      "Для B значение 2026 выше чем 2025"
+    ],
+    "negative_facts": [
+      "Есть линия тренда",
+      "Есть 10 категорий"
+    ]
+  },
+  {
+    "id": "img07_line_trend",
+    "url": "https://quickchart.io/chart?c={type:'line',data:{labels:['Jan','Feb','Mar','Apr','May'],datasets:[{label:'Temp',data:[2,4,9,7,11]}]}}",
+    "golden_facts": [
+      "Это линейный график",
+      "Есть 5 точек Jan-May",
+      "Общий тренд растущий к маю",
+      "После Mar есть спад в Apr"
+    ],
+    "negative_facts": [
+      "Это диаграмма рассеяния",
+      "Нет подписей месяцев"
+    ]
+  },
+  {
+    "id": "img08_pie_share",
+    "url": "https://quickchart.io/chart?c={type:'pie',data:{labels:['Chrome','Firefox','Safari'],datasets:[{data:[62,21,17]}]}}",
+    "golden_facts": [
+      "Это круговая диаграмма",
+      "Есть 3 сегмента",
+      "Chrome самый большой сегмент",
+      "Safari самый маленький сегмент"
+    ],
+    "negative_facts": [
+      "Это горизонтальная гистограмма",
+      "Есть 8 сегментов"
+    ]
+  },
+  {
+    "id": "img09_table_like_text",
+    "url": "https://dummyimage.com/1100x700/ffffff/222222.png&text=Name%2CScore%0AAlice%2C91%0ABob%2C84%0AClara%2C97",
+    "golden_facts": [
+      "Есть строки с именами Alice Bob Clara",
+      "Есть баллы 91 84 97",
+      "Clara имеет самый высокий балл",
+      "Данные выглядят как табличные/CSV"
+    ],
+    "negative_facts": [
+      "Есть фотография пейзажа",
+      "Есть QR-код"
+    ]
+  },
+  {
+    "id": "img10_error_banner",
+    "url": "https://dummyimage.com/1200x400/ffebee/b71c1c.png&text=ERROR+503%3A+SERVICE+UNAVAILABLE",
+    "golden_facts": [
+      "Есть текст ERROR 503",
+      "Есть фраза SERVICE UNAVAILABLE",
+      "Оформление похоже на ошибку/алерт",
+      "Фон светло-красный"
+    ],
+    "negative_facts": [
+      "Это чек/инвойс",
+      "На изображении есть график"
+    ]
+  },
+  {
+    "id": "img11_route_sign",
+    "url": "https://dummyimage.com/900x500/e3f2fd/0d47a1.png&text=EXIT+24B+%E2%86%92",
+    "golden_facts": [
+      "Есть текст EXIT 24B",
+      "Есть стрелка вправо",
+      "Это похоже на указатель/знак",
+      "Фон голубой"
+    ],
+    "negative_facts": [
+      "Стрелка влево",
+      "Есть таблица из 10 строк"
+    ]
+  },
+  {
+    "id": "img12_schedule_note",
+    "url": "https://dummyimage.com/1000x650/f1f8e9/33691e.png&text=Meeting+10%3A30%0ARoom+C-7%0AOwner%3A+Nina",
+    "golden_facts": [
+      "Есть Meeting 10:30",
+      "Есть Room C-7",
+      "Есть Owner Nina",
+      "Это текстовая заметка/расписание"
+    ],
+    "negative_facts": [
+      "Есть карта метро",
+      "Есть диаграмма с осями"
+    ]
+  }
+]

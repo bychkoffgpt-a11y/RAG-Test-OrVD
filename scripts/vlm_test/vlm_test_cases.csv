@@ -1,0 +1,13 @@
+id,url,golden_facts,negative_facts
+img01_stop_sign,https://dummyimage.com/800x500/ffffff/000000.png&text=STOP+SIGN,"STOP SIGN;text centered;light background;dark text","person;car"
+img02_invoice_text,https://dummyimage.com/1000x700/f5f5f5/111111.png&text=INVOICE%0AID%3A+A-1024%0ATOTAL%3A+%24849.90%0ADUE%3A+2026-05-15,"INVOICE;A-1024;849.90;2026-05-15","logo;product photo"
+img03_warning_label,https://dummyimage.com/900x500/fff3cd/000000.png&text=WARNING%3A+HIGH+VOLTAGE,"WARNING;HIGH VOLTAGE;yellow-like background","table;map"
+img04_multiline_mixed,https://dummyimage.com/1000x600/e8f0fe/1a237e.png&text=Room+12B%0AStatus%3A+OPEN%0ACapacity%3A+42,"Room 12B;OPEN;Capacity 42;multiline text","barcode;portrait"
+img05_chart_sales_q,https://quickchart.io/chart?c={type:'bar',data:{labels:['Q1','Q2','Q3','Q4'],datasets:[{label:'Sales',data:[12,19,7,15]}]}},"bar chart;Q2 highest;Q3 lowest;4 categories","pie chart;12 categories"
+img06_chart_compare_ab,https://quickchart.io/chart?c={type:'bar',data:{labels:['A','B','C'],datasets:[{label:'2025',data:[30,10,20]},{label:'2026',data:[25,15,22]}]}},"2 datasets;A/B/C;A:2025>2026;B:2026>2025","line trend;10 categories"
+img07_line_trend,https://quickchart.io/chart?c={type:'line',data:{labels:['Jan','Feb','Mar','Apr','May'],datasets:[{label:'Temp',data:[2,4,9,7,11]}]}},"line chart;5 points;rise to May;drop Mar->Apr","scatter;no month labels"
+img08_pie_share,https://quickchart.io/chart?c={type:'pie',data:{labels:['Chrome','Firefox','Safari'],datasets:[{data:[62,21,17]}]}},"pie chart;3 segments;Chrome largest;Safari smallest","horizontal bars;8 segments"
+img09_table_like_text,https://dummyimage.com/1100x700/ffffff/222222.png&text=Name%2CScore%0AAlice%2C91%0ABob%2C84%0AClara%2C97,"Alice/Bob/Clara;91/84/97;Clara highest;table-like","landscape photo;QR code"
+img10_error_banner,https://dummyimage.com/1200x400/ffebee/b71c1c.png&text=ERROR+503%3A+SERVICE+UNAVAILABLE,"ERROR 503;SERVICE UNAVAILABLE;alert style;red-like background","invoice;graph"
+img11_route_sign,https://dummyimage.com/900x500/e3f2fd/0d47a1.png&text=EXIT+24B+%E2%86%92,"EXIT 24B;right arrow;sign-like;blue-like background","left arrow;10-row table"
+img12_schedule_note,https://dummyimage.com/1000x650/f1f8e9/33691e.png&text=Meeting+10%3A30%0ARoom+C-7%0AOwner%3A+Nina,"Meeting 10:30;Room C-7;Owner Nina;schedule note","subway map;axis chart"
