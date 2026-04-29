@@ -175,3 +175,40 @@ def test_generate_continues_truncated_answer(monkeypatch):
 
     assert 'Если документы не подписаны Э ЭДО' in answer
     assert len(calls) == 2
+
+
+def test_generate_preserves_invoice_facts_in_trace(monkeypatch):
+    trace: dict = {}
+
+    class _Resp:
+        def __init__(self, status_code: int, data: dict):
+            self.status_code = status_code
+            self._data = data
+
+        def json(self):
+            return self._data
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise httpx.HTTPStatusError('error', request=None, response=None)
+
+    def _fake_post(url, json, timeout):
+        return _Resp(
+            200,
+            {
+                'choices': [
+                    {
+                        'message': {
+                            'content': 'Проверен факт: INVOICE/A-1024/849.90 найден в OCR и подтвержден.',
+                        }
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(httpx, 'post', _fake_post)
+
+    answer = LlmClient().generate('Проверь инвойс', trace=trace)
+
+    assert 'INVOICE/A-1024/849.90' in trace['raw_model_output']
+    assert 'INVOICE/A-1024/849.90' in answer
