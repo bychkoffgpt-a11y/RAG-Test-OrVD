@@ -13,7 +13,7 @@
   - partial-credit по фактам;
   - метрики по группам (`text/chart/sign`).
 - `probe_ask_vlm.py` — быстрый smoke probe `/ask` на одном изображении.
-- `check_ask_trace.py` — проверка полноты диагностических этапов по `trace_id` в логах.
+- `check_ask_trace.py` — проверка полноты диагностических этапов по `trace_id/request_id` в plain-text и JSON-логах.
 - `summarize_vlm_diagnostics.py` — сводный markdown-отчёт сравнения `/ask` vs `/chat`.
 - `run_full_diagnostics.sh` — единый сценарий, который запускает всё end-to-end.
 
@@ -143,7 +143,7 @@ python3 check_ask_trace.py --log-file $LOG_FILE
 1. Прогнать `run_full_diagnostics.sh`.
 2. Сверить `comparison.md`.
 3. Если `/ask` сильно хуже `/chat`, сделать `probe_ask_vlm.py` на 2-3 картинках.
-4. Проверить `check_ask_trace.py` на логах за эти trace_id.
+4. Проверить `check_ask_trace.py` на логах за эти trace_id/request_id.
 5. Локализовать первый отсутствующий этап и исправлять соответствующий модуль (`api -> rag -> vision`).
 
 ## Дополнительно

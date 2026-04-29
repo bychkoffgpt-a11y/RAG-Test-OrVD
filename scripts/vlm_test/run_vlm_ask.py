@@ -13,10 +13,13 @@ DEFAULT_PROMPT = (
 )
 
 def call_ask(api_url: str, question: str, image_url: str, timeout: int = 90):
-    # Подстрой под ваш фактический контракт /ask при необходимости
+    # Отправляем в контрактном формате `attachments`.
+    # Дополнительно оставляем legacy-поле `images` для обратной совместимости
+    # со старыми dev-ветками/адаптерами, где оно могло использоваться.
     payload = {
         "question": question,
-        "images": [image_url]
+        "attachments": [{"image_path": image_url}],
+        "images": [image_url],
     }
     r = requests.post(f"{api_url.rstrip('/')}/ask", json=payload, timeout=timeout)
     r.raise_for_status()
@@ -28,6 +31,20 @@ def extract_text(resp: dict) -> str:
         for k in ("answer", "output_text", "text", "response"):
             if k in resp and isinstance(resp[k], str):
                 return resp[k]
+        # fallback для openai-like полезных нагрузок
+        choices = resp.get("choices")
+        if isinstance(choices, list) and choices:
+            msg = (choices[0] or {}).get("message", {})
+            content = msg.get("content")
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                chunks = []
+                for item in content:
+                    if isinstance(item, dict) and isinstance(item.get("text"), str):
+                        chunks.append(item["text"])
+                if chunks:
+                    return "\n".join(chunks)
     return json.dumps(resp, ensure_ascii=False)
 
 def main():
