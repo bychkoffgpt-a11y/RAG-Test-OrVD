@@ -4,6 +4,8 @@ import time
 import uuid
 
 import httpx
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
@@ -25,18 +27,19 @@ from src.vision.service import VisionService
 configure_logging()
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title='ЦСВ АНС Support API', version='0.1.0')
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    VisionService.preload_runtime_models()
+    yield
+
+
+app = FastAPI(title='ЦСВ АНС Support API', version='0.1.0', lifespan=lifespan)
 app.include_router(ask_router)
 app.include_router(ingest_a_router)
 app.include_router(ingest_b_router)
 app.include_router(sources_router)
 
 orch = RagOrchestrator()
-
-
-@app.on_event('startup')
-def preload_vision_runtime_models() -> None:
-    VisionService.preload_runtime_models()
 
 
 def _looks_like_chart_case(question: str, messages: list[dict]) -> bool:
