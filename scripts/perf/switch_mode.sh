@@ -39,5 +39,19 @@ grep -E '^(VISION_RUNTIME_MODE|RETRIEVAL_USE_RERANKER)=' .env
 echo "[INFO] Recreate support-api..."
 docker compose up -d --force-recreate support-api
 
+echo "[INFO] Waiting for support-api readiness..."
+for i in {1..30}; do
+  if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+    echo "[OK] support-api is ready"
+    break
+  fi
+  sleep 1
+done
+
+if ! curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+  echo "[ERROR] support-api is not ready after timeout"
+  exit 1
+fi
+
 echo "[INFO] Effective env in container:"
 docker compose exec support-api sh -lc 'printenv | grep -E "^(VISION_RUNTIME_MODE|RETRIEVAL_USE_RERANKER)="'
