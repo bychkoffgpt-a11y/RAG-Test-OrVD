@@ -55,11 +55,13 @@ class DummyOrchestrator:
         self.last_payload = None
         self.last_max_tokens = None
         self.last_temperature = None
+        self.last_kwargs = {}
 
-    def answer(self, ask_payload, max_tokens: int, temperature: float):
+    def answer(self, ask_payload, max_tokens: int, temperature: float, **kwargs):
         self.last_payload = ask_payload
         self.last_max_tokens = max_tokens
         self.last_temperature = temperature
+        self.last_kwargs = kwargs
         return DummyAnswer()
 
 
@@ -144,6 +146,10 @@ def test_chat_completions_accepts_null_generation_params(monkeypatch):
 
     assert response.status_code == 200
     assert dummy.last_max_tokens == 1024
+    assert dummy.last_kwargs['top_p'] == 0.9
+    assert dummy.last_kwargs['frequency_penalty'] == 0.1
+    assert dummy.last_kwargs['presence_penalty'] == 0.05
+    assert dummy.last_kwargs['stop'] == ['</s>']
 
 
 def test_chat_completions_extracts_image_attachment_from_messages(monkeypatch):

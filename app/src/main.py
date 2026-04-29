@@ -144,6 +144,23 @@ def openai_compat(payload: dict, request: Request):
     else:
         temperature = float(raw_temperature)
 
+    raw_top_p = payload.get('top_p')
+    top_p = 0.9 if raw_top_p is None else float(raw_top_p)
+
+    raw_frequency_penalty = payload.get('frequency_penalty')
+    frequency_penalty = 0.1 if raw_frequency_penalty is None else float(raw_frequency_penalty)
+
+    raw_presence_penalty = payload.get('presence_penalty')
+    presence_penalty = 0.05 if raw_presence_penalty is None else float(raw_presence_penalty)
+
+    raw_stop = payload.get('stop')
+    if raw_stop is None:
+        stop = ['</s>']
+    elif isinstance(raw_stop, str):
+        stop = [raw_stop]
+    else:
+        stop = [str(item) for item in raw_stop]
+
     try:
         if chart_mode:
             question = (
@@ -160,9 +177,13 @@ def openai_compat(payload: dict, request: Request):
                 temperature=temperature,
                 endpoint='/v1/chat/completions',
                 pre_processing_sec=time.perf_counter() - started,
+                top_p=top_p,
+                frequency_penalty=frequency_penalty,
+                presence_penalty=presence_penalty,
+                stop=stop,
             )
         except TypeError:
-            answer = orch.answer(ask_payload, max_tokens=max_tokens, temperature=temperature)
+            answer = orch.answer(ask_payload, max_tokens=max_tokens, temperature=temperature, endpoint='/v1/chat/completions')
     except ValidationError as exc:
         return JSONResponse(status_code=400, content={'detail': str(exc)})
     except httpx.TimeoutException:
@@ -170,7 +191,17 @@ def openai_compat(payload: dict, request: Request):
     except httpx.HTTPError as exc:
         return JSONResponse(status_code=502, content={'detail': f'Ошибка LLM backend: {exc}'})
 
-    logger.info('openai_compat_generation_params', extra={'max_tokens': max_tokens, 'temperature': temperature})
+    logger.info(
+        'openai_compat_generation_params',
+        extra={
+            'max_tokens': max_tokens,
+            'temperature': temperature,
+            'top_p': top_p,
+            'frequency_penalty': frequency_penalty,
+            'presence_penalty': presence_penalty,
+            'stop': stop,
+        },
+    )
 
     completion_id = f'chatcmpl-{uuid.uuid4().hex[:12]}'
     created = int(time.time())
