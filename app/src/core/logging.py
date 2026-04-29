@@ -16,6 +16,31 @@ class SuppressMetricsAccessFilter(logging.Filter):
 
 
 class JsonFormatter(logging.Formatter):
+    _BASE_FIELDS = {
+        'name',
+        'msg',
+        'args',
+        'levelname',
+        'levelno',
+        'pathname',
+        'filename',
+        'module',
+        'exc_info',
+        'exc_text',
+        'stack_info',
+        'lineno',
+        'funcName',
+        'created',
+        'msecs',
+        'relativeCreated',
+        'thread',
+        'threadName',
+        'processName',
+        'process',
+        'taskName',
+        'asctime',
+    }
+
     def format(self, record: logging.LogRecord) -> str:
         payload = {
             'timestamp': datetime.now(timezone.utc).isoformat(),
@@ -27,6 +52,10 @@ class JsonFormatter(logging.Formatter):
             payload['request_id'] = record.request_id
         elif get_request_id() is not None:
             payload['request_id'] = get_request_id()
+        for key, value in record.__dict__.items():
+            if key.startswith('_') or key in self._BASE_FIELDS or key in payload:
+                continue
+            payload[key] = value
         if record.exc_info:
             payload['exc_info'] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=False)

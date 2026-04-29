@@ -53,6 +53,18 @@ class RagOrchestrator:
         pre_processing_sec: float = 0.0,
     ) -> AskResponse:
         started = time.perf_counter()
+        trace_id = get_request_id()
+        vision_mode = settings.vision_runtime_mode
+
+        def _trace(stage: str, **extra: object) -> None:
+            payload = {
+                'trace_id': trace_id,
+                'stage': stage,
+                'vision_mode': vision_mode,
+            }
+            payload.update(extra)
+            logger.info('rag_trace_stage', extra=payload)
+
         trace_card: dict = {
             'meta': {
                 'request_id': get_request_id(),
@@ -78,11 +90,13 @@ class RagOrchestrator:
         trace_card['aggregate_timings_sec']['pre_processing'] = round(max(pre_processing_sec, 0.0), 6)
 
         vision_started = time.perf_counter()
+        _trace('image_preprocess_start')
         raw_visual = []
         if payload.attachments:
             raw_visual = self.vision.analyze_attachments(payload.attachments, payload.question)
         visual_evidence = [item.model_dump() if hasattr(item, 'model_dump') else dict(item) for item in raw_visual]
         vision_duration = time.perf_counter() - vision_started
+        _trace('image_preprocess_end', latency_ms=round(vision_duration * 1000.0, 3))
         self._observe_stage(endpoint=endpoint, stage='vision', duration_sec=vision_duration, payload=payload)
         logger.info(
             'rag_vision_finished',
@@ -150,9 +164,16 @@ class RagOrchestrator:
         trace_card['aggregate_timings_sec']['prompt_build'] = round(prompt_duration, 6)
 
         llm_started = time.perf_counter()
+        _trace('vlm_infer_start')
         llm_trace: dict = {}
         answer = self.llm.generate(prompt, max_tokens=max_tokens, temperature=temperature, trace=llm_trace)
         llm_duration = time.perf_counter() - llm_started
+        _trace(
+            'vlm_infer_end',
+            latency_ms=round(llm_duration * 1000.0, 3),
+            tokens_in=llm_trace.get('prompt_tokens'),
+            tokens_out=llm_trace.get('completion_tokens'),
+        )
         self._observe_stage(endpoint=endpoint, stage='llm_generation', duration_sec=llm_duration, payload=payload)
         logger.info(
             'rag_llm_finished',
@@ -162,6 +183,7 @@ class RagOrchestrator:
         trace_card['aggregate_timings_sec']['llm_generation'] = round(llm_duration, 6)
 
         postprocess_started = time.perf_counter()
+        _trace('parse_start')
         sources = [
             SourceItem(
                 doc_id=item['doc_id'],
@@ -176,9 +198,11 @@ class RagOrchestrator:
         ]
         images = collect_images(contexts)
         postprocess_duration = time.perf_counter() - postprocess_started
+        _trace('parse_end', latency_ms=round(postprocess_duration * 1000.0, 3))
         self._observe_stage(endpoint=endpoint, stage='post_formatting', duration_sec=postprocess_duration, payload=payload)
 
         total_duration = time.perf_counter() - started
+        _trace('finalize', latency_ms=round(total_duration * 1000.0, 3))
         self._observe_stage(endpoint=endpoint, stage='total', duration_sec=total_duration, payload=payload)
         trace_card['aggregate_timings_sec']['post_formatting'] = round(postprocess_duration, 6)
         trace_card['aggregate_timings_sec']['total'] = round(total_duration, 6)
