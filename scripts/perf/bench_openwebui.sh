@@ -51,7 +51,9 @@ if [[ "${PREFLIGHT_CODE}" -lt 200 || "${PREFLIGHT_CODE}" -ge 300 ]]; then
 fi
 
 run_once() {
-  local i="$1" phase="$2" body_file="$OUT_DIR/req_${phase}_${i}.json"
+  local i="$1"
+  local phase="$2"
+  local body_file="$OUT_DIR/req_${phase}_${i}.json"
 
   if [[ "$TEXT_ONLY" == "1" ]]; then
     jq -n --arg model "$MODEL_ID" --arg q "$QUESTION" --argjson mt "$MAX_TOKENS" --argjson temp "$TEMPERATURE" --argjson k "$TOP_K" --arg s "$SCOPE" \
