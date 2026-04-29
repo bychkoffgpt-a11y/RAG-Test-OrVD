@@ -7,6 +7,7 @@ MODEL="${MODEL:-local-vlm}"
 CASES_FILE="${CASES_FILE:-${ROOT_DIR}/vlm_test_cases.json}"
 OUT_DIR="${OUT_DIR:-${ROOT_DIR}/out/$(date -u +%Y%m%dT%H%M%SZ)}"
 HIT_THRESHOLD="${HIT_THRESHOLD:-0.6}"
+RAG_SCOPE="${RAG_SCOPE:-none}"
 
 mkdir -p "$OUT_DIR"
 
@@ -14,6 +15,7 @@ echo "[1/6] /ask run"
 python3 "${ROOT_DIR}/run_vlm_ask.py" \
   --api-url "$API_URL" \
   --cases "$CASES_FILE" \
+  --scope "$RAG_SCOPE" \
   --out "${OUT_DIR}/vlm_ask_results.jsonl"
 
 echo "[2/6] /v1/chat/completions run"
@@ -21,6 +23,7 @@ python3 "${ROOT_DIR}/run_vlm_chat_completions.py" \
   --api-url "$API_URL" \
   --model "$MODEL" \
   --cases "$CASES_FILE" \
+  --rag-scope "$RAG_SCOPE" \
   --out "${OUT_DIR}/vlm_chat_results.jsonl"
 
 echo "[3/6] baseline score (/ask)"
