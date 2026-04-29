@@ -35,3 +35,52 @@
 
 - `v3` (2026-04-29): ужесточен runtime VLM system prompt: модель обязана отвечать строго JSON по единой схеме для последующей валидации/repair.
 - `v4` (2026-04-29): добавлена task-aware vision-инструкция (`text|sign|chart`) с отдельными шаблонами и ограничением top-k chart points для снижения latency/галлюцинаций.
+- `v5` (2026-04-29): runtime VLM переведён на строгую схему `visible_facts[]/uncertain_facts[]/not_visible[]` + `confidence`, добавлена валидация на логические противоречия.
+
+## Runtime VLM JSON-формат (v5)
+Обязательная схема:
+```json
+{
+  "visible_facts": ["..."],
+  "uncertain_facts": ["..."],
+  "not_visible": ["..."],
+  "confidence": 0.0
+}
+```
+
+Правила:
+- Один и тот же факт **нельзя** указывать одновременно в `visible_facts`, `uncertain_facts` и/или `not_visible`.
+- Если `confidence >= 0.75`, `not_visible` должен быть пустым.
+- Без свободного текста вне JSON.
+
+Примеры:
+
+### text
+```json
+{
+  "visible_facts": ["На экране ошибка HTTP 500", "В логе есть строка Internal Server Error"],
+  "uncertain_facts": ["Кнопка Retry может быть неактивна"],
+  "not_visible": [],
+  "confidence": 0.91
+}
+```
+
+### sign
+```json
+{
+  "visible_facts": ["На знаке написано 'Доступ запрещен'"],
+  "uncertain_facts": ["Нижняя строка может содержать код подразделения"],
+  "not_visible": ["Мелкий текст в правом нижнем углу нечитаем"],
+  "confidence": 0.62
+}
+```
+
+### chart
+```json
+{
+  "visible_facts": ["Линия Q2 выше Q1", "Подпись оси X: Jan-Feb-Mar"],
+  "uncertain_facts": ["Точное значение в точке Mar около 120"],
+  "not_visible": ["Легенда частично обрезана"],
+  "confidence": 0.68
+}
+```

@@ -26,12 +26,31 @@ class VlmChartPoint(BaseModel):
 
 
 class VlmStructuredResponse(BaseModel):
-    detected_text: str = ''
-    objects: list[str] = Field(default_factory=list)
-    numbers: list[str] = Field(default_factory=list)
-    chart_points: list[VlmChartPoint] = Field(default_factory=list)
+    visible_facts: list[str] = Field(default_factory=list)
+    uncertain_facts: list[str] = Field(default_factory=list)
+    not_visible: list[str] = Field(default_factory=list)
     confidence: float = 0.0
-    evidence_spans: list[str] = Field(default_factory=list)
+
+    @staticmethod
+    def _normalize_fact(value: str) -> str:
+        return re.sub(r'\s+', ' ', (value or '').strip().lower())
+
+    def model_post_init(self, __context) -> None:
+        normalized_visible = {self._normalize_fact(item) for item in self.visible_facts if item.strip()}
+        normalized_uncertain = {self._normalize_fact(item) for item in self.uncertain_facts if item.strip()}
+        normalized_not_visible = {self._normalize_fact(item) for item in self.not_visible if item.strip()}
+
+        collisions = (
+            (normalized_visible & normalized_uncertain)
+            | (normalized_visible & normalized_not_visible)
+            | (normalized_uncertain & normalized_not_visible)
+        )
+        if collisions:
+            raise ValueError('VLM response has duplicate facts across sections')
+
+        # Высокая уверенность не должна сопровождаться пометкой "не видно/нечитаемо".
+        if self.confidence >= 0.75 and normalized_not_visible:
+            raise ValueError('High-confidence VLM response cannot contain not_visible facts')
 
 
 
@@ -609,7 +628,9 @@ class VisionService:
     def _repair_prompt(raw_output: str) -> str:
         return (
             'Исправь ответ. Верни только валидный JSON строго по схеме '
-            '(detected_text, objects, numbers, chart_points, confidence, evidence_spans). '
+            '(visible_facts, uncertain_facts, not_visible, confidence). '
+            'Не дублируй один и тот же факт в разных секциях. '
+            'Если confidence >= 0.75, массив not_visible должен быть пустым. '
             f'Текущий невалидный ответ: {raw_output}'
         )
 
@@ -627,14 +648,10 @@ class VisionService:
         parsed = self._parse_vlm_json(raw_output)
         if parsed is None:
             return ''
-        top_k = max(int(settings.vision_chart_top_k_points), 0)
-        chart_points = parsed.chart_points[:top_k] if top_k else []
         parts = [
-            parsed.detected_text,
-            ' '.join(parsed.objects),
-            ' '.join(parsed.numbers),
-            ' '.join([f"{p.label}:{p.value}" for p in chart_points]),
-            ' '.join(parsed.evidence_spans),
+            ' '.join(parsed.visible_facts),
+            ' '.join(parsed.uncertain_facts),
+            ' '.join(parsed.not_visible),
         ]
         return self._normalize_for_scoring(' | '.join(p for p in parts if p))
 
