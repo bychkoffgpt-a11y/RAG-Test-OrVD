@@ -213,6 +213,12 @@ class RagOrchestrator:
             trace=llm_trace,
         )
         llm_duration = time.perf_counter() - llm_started
+        raw_model_output = llm_trace.get('raw_model_output')
+        if logger.isEnabledFor(logging.DEBUG) and settings.app_env == 'dev' and raw_model_output:
+            logger.debug(
+                'raw_model_output',
+                extra={'trace_id': trace_id, 'endpoint': endpoint, 'raw_model_output': raw_model_output},
+            )
         _trace(
             'vlm_infer_end',
             latency_ms=round(llm_duration * 1000.0, 3),
@@ -263,6 +269,10 @@ class RagOrchestrator:
                 'visual_evidence': len(visual_evidence),
                 'duration_sec': round(total_duration, 3),
             },
+        )
+        logger.info(
+            'final_output',
+            extra={'trace_id': trace_id, 'endpoint': endpoint, 'final_output': answer},
         )
         logger.info(
             'rag_pipeline_profile',
