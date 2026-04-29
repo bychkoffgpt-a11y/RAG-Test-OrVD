@@ -219,3 +219,18 @@ def test_normalize_for_scoring_handles_numbers_dates_units():
     assert '1000' in normalized
     assert '2024-02-01' in normalized
     assert 'kg' in normalized
+
+
+def test_detect_task_type_routes_chart_sign_text():
+    assert VisionService._detect_task_type(question='Опиши chart legend и axis', image_path='a.png') == 'chart'
+    assert VisionService._detect_task_type(question='Прочитай warning sign', image_path='a.png') == 'sign'
+    assert VisionService._detect_task_type(question='Извлеки текст таблицы', image_path='a.png') == 'text'
+
+
+def test_compose_structured_text_limits_chart_points(monkeypatch):
+    service = VisionService()
+    monkeypatch.setattr('src.vision.service.settings.vision_chart_top_k_points', 2, raising=False)
+    raw = '{"detected_text":"d","objects":[],"numbers":[],"chart_points":[{"label":"A","value":"1"},{"label":"B","value":"2"},{"label":"C","value":"3"}],"confidence":0.9,"evidence_spans":[]}'
+    out = service._compose_structured_text(raw)
+    assert 'a:1' in out and 'b:2' in out
+    assert 'c:3' not in out

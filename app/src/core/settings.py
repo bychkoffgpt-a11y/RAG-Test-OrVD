@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     vision_model_device: str = 'auto'
     vision_model_dtype: str = 'auto'
     vision_model_max_new_tokens: int = 160
+    vision_chart_top_k_points: int = 6
     vision_runtime_timeout_sec: float = 120.0
     vision_runtime_max_images: int = 3
     vision_runtime_max_image_pixels: int = 4_194_304

@@ -74,6 +74,7 @@ def main():
             row = {
                 "id": c["id"],
                 "url": c["url"],
+                "task_type": c.get("task_type"),
                 "golden_facts": c["golden_facts"],
                 "negative_facts": c["negative_facts"],
                 "latency_ms": latency_ms,
@@ -81,6 +82,9 @@ def main():
                 "answer_text": text,
                 "raw_response": resp
             }
+            visual = (resp or {}).get("visual_evidence") if isinstance(resp, dict) else None
+            if isinstance(visual, list) and visual:
+                row["task_type_routed"] = (visual[0] or {}).get("task_type")
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
             print(f"[{c['id']}] latency={latency_ms}ms error={err is not None}")
             time.sleep(args.sleep)
