@@ -2,11 +2,6 @@ import logging
 import json
 import time
 import uuid
-import base64
-import binascii
-import mimetypes
-from pathlib import Path
-from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, Request
@@ -23,6 +18,7 @@ from src.core.request_context import reset_request_id, set_request_id
 from src.core.settings import settings
 from src.rag.answer_formatter import append_grounding_markdown, append_sources_markdown
 from src.rag.orchestrator import RagOrchestrator
+from src.rag.vision.input_adapter import adapt_image_attachments
 from src.telemetry.metrics import HTTP_LATENCY, HTTP_REQUESTS, metrics_response
 from src.vision.service import VisionService
 
@@ -41,155 +37,6 @@ orch = RagOrchestrator()
 @app.on_event('startup')
 def preload_vision_runtime_models() -> None:
     VisionService.preload_runtime_models()
-
-
-def _resolve_path_alias(path: str) -> str:
-    normalized = path.strip()
-    if not normalized:
-        return normalized
-
-    mappings = [
-        item.strip()
-        for item in settings.vision_attachment_path_aliases.split(';')
-        if item.strip()
-    ]
-    for mapping in mappings:
-        if '=' not in mapping:
-            continue
-        source_prefix, target_prefix = mapping.split('=', 1)
-        source_prefix = source_prefix.strip()
-        target_prefix = target_prefix.strip()
-        if source_prefix and target_prefix and normalized.startswith(source_prefix):
-            return normalized.replace(source_prefix, target_prefix, 1)
-    return normalized
-
-
-def _ensure_runtime_upload_dir() -> Path:
-    target = Path(settings.file_storage_root).joinpath('runtime_uploads')
-    target.mkdir(parents=True, exist_ok=True)
-    return target
-
-
-def _materialize_data_url(raw_url: str) -> str | None:
-    if not raw_url.startswith('data:image/'):
-        return None
-    if ';base64,' not in raw_url:
-        logger.warning('attachment_data_url_unsupported_encoding')
-        return None
-
-    header, payload = raw_url.split(';base64,', 1)
-    mime = header[len('data:') :].strip().lower()
-    if mime not in settings.vision_attachment_allowed_mime_types:
-        logger.warning('attachment_data_url_unsupported_mime', extra={'mime': mime})
-        return None
-
-    try:
-        decoded = base64.b64decode(payload, validate=True)
-    except (ValueError, binascii.Error):
-        logger.warning('attachment_data_url_decode_failed')
-        return None
-
-    if len(decoded) > settings.vision_attachment_max_bytes:
-        logger.warning(
-            'attachment_data_url_too_large',
-            extra={'bytes': len(decoded), 'max_bytes': settings.vision_attachment_max_bytes},
-        )
-        return None
-
-    suffix = mimetypes.guess_extension(mime) or '.png'
-    file_path = _ensure_runtime_upload_dir().joinpath(f'{uuid.uuid4().hex}{suffix}')
-    file_path.write_bytes(decoded)
-    return str(file_path)
-
-
-def _materialize_remote_url(raw_url: str) -> str | None:
-    if not raw_url.startswith(('http://', 'https://')):
-        return None
-
-    timeout = httpx.Timeout(10.0, connect=5.0)
-    try:
-        response = httpx.get(raw_url, timeout=timeout, follow_redirects=True)
-    except httpx.HTTPError:
-        logger.warning('attachment_remote_fetch_failed', extra={'url': raw_url})
-        return None
-
-    if response.status_code >= 400:
-        logger.warning('attachment_remote_bad_status', extra={'url': raw_url, 'status_code': response.status_code})
-        return None
-
-    payload = response.content
-    if len(payload) > settings.vision_attachment_max_bytes:
-        logger.warning(
-            'attachment_remote_too_large',
-            extra={'url': raw_url, 'bytes': len(payload), 'max_bytes': settings.vision_attachment_max_bytes},
-        )
-        return None
-
-    content_type = str(response.headers.get('content-type', '')).split(';', 1)[0].strip().lower()
-    if content_type and content_type not in settings.vision_attachment_allowed_mime_types:
-        logger.warning('attachment_remote_unsupported_mime', extra={'url': raw_url, 'mime': content_type})
-        return None
-
-    parsed_url = urlparse(raw_url)
-    guessed_suffix = Path(parsed_url.path).suffix
-    if guessed_suffix:
-        suffix = guessed_suffix
-    else:
-        suffix = mimetypes.guess_extension(content_type) if content_type else '.png'
-        suffix = suffix or '.png'
-
-    file_path = _ensure_runtime_upload_dir().joinpath(f'{uuid.uuid4().hex}{suffix}')
-    file_path.write_bytes(payload)
-    return str(file_path)
-
-
-def _normalize_attachment_path(raw_url: str) -> str | None:
-    normalized = raw_url.strip()
-    if not normalized:
-        return None
-    if normalized.startswith('file://'):
-        normalized = normalized[len('file://') :]
-
-    materialized = _materialize_data_url(normalized)
-    if materialized:
-        return materialized
-
-    materialized = _materialize_remote_url(normalized)
-    if materialized:
-        return materialized
-
-    return _resolve_path_alias(normalized)
-
-
-def _extract_attachments_from_message_content(content) -> list[AttachmentItem]:
-    attachments: list[AttachmentItem] = []
-    if not isinstance(content, list):
-        return attachments
-
-    for part in content:
-        if not isinstance(part, dict):
-            continue
-        if part.get('type') not in {'image_url', 'input_image', 'image'}:
-            continue
-
-        raw_url = None
-        image_url = part.get('image_url')
-        if isinstance(image_url, dict):
-            raw_url = image_url.get('url')
-        elif isinstance(image_url, str):
-            raw_url = image_url
-        if raw_url is None:
-            raw_url = part.get('url')
-
-        if not isinstance(raw_url, str) or not raw_url.strip():
-            continue
-
-        normalized = _normalize_attachment_path(raw_url)
-        if not normalized:
-            continue
-        attachments.append(AttachmentItem(image_path=normalized))
-
-    return attachments
 
 
 def _looks_like_chart_case(question: str, messages: list[dict]) -> bool:
@@ -265,7 +112,7 @@ def openai_compat(payload: dict, request: Request):
                 if isinstance(part, dict) and part.get('type') == 'text':
                     text_parts.append(part.get('text', ''))
             question = '\n'.join([p for p in text_parts if p]).strip()
-            extracted_attachments = _extract_attachments_from_message_content(content)
+            extracted_attachments = adapt_image_attachments(message_content=content)
 
         if extracted_attachments and not attachments:
             attachments = extracted_attachments
