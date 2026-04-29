@@ -6,6 +6,7 @@ import base64
 import binascii
 import mimetypes
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, Request
@@ -129,7 +130,8 @@ def _materialize_remote_url(raw_url: str) -> str | None:
         logger.warning('attachment_remote_unsupported_mime', extra={'url': raw_url, 'mime': content_type})
         return None
 
-    guessed_suffix = Path(raw_url).suffix
+    parsed_url = urlparse(raw_url)
+    guessed_suffix = Path(parsed_url.path).suffix
     if guessed_suffix:
         suffix = guessed_suffix
     else:
@@ -259,9 +261,10 @@ def openai_compat(payload: dict, request: Request):
                 attachments = extracted_attachments
             break
 
+    is_vision_only = bool(attachments) and not question.strip()
     if not question.strip():
         if attachments:
-            question = 'Опишите, что видно на скриншоте, и предложите решение проблемы.'
+            question = 'Опиши изображение 4-6 конкретными фактами. Если что-то не видно, так и скажи.'
             logger.info('openai_compat_question_fallback_used')
         else:
             logger.warning('openai_compat_question_missing')
@@ -305,8 +308,10 @@ def openai_compat(payload: dict, request: Request):
     model = payload.get('model', 'local-rag-model')
     is_stream = payload.get('stream') is True
 
-    rendered_answer = append_grounding_markdown(answer.answer, answer.sources, base_url=str(request.base_url))
-    rendered_answer = append_sources_markdown(rendered_answer, answer.sources, base_url=str(request.base_url))
+    rendered_answer = answer.answer
+    if not is_vision_only:
+        rendered_answer = append_grounding_markdown(rendered_answer, answer.sources, base_url=str(request.base_url))
+        rendered_answer = append_sources_markdown(rendered_answer, answer.sources, base_url=str(request.base_url))
     logger.info(
         'openai_compat_answer_ready',
         extra={
