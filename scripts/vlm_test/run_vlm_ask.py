@@ -12,12 +12,13 @@ DEFAULT_PROMPT = (
     "3) Не выдумывай факты."
 )
 
-def call_ask(api_url: str, question: str, image_url: str, timeout: int = 90):
+def call_ask(api_url: str, question: str, image_url: str, scope: str, timeout: int = 90):
     # Отправляем в контрактном формате `attachments`.
     # Дополнительно оставляем legacy-поле `images` для обратной совместимости
     # со старыми dev-ветками/адаптерами, где оно могло использоваться.
     payload = {
         "question": question,
+        "scope": scope,
         "attachments": [{"image_path": image_url}],
         "images": [image_url],
     }
@@ -52,6 +53,7 @@ def main():
     ap.add_argument("--api-url", required=True, help="например http://localhost:8000")
     ap.add_argument("--cases", default="vlm_test_cases.json")
     ap.add_argument("--out", default="vlm_ask_results.jsonl")
+    ap.add_argument("--scope", default="none", help="RAG scope для /ask: all|csv_ans_docs|internal_regulations|none")
     ap.add_argument("--sleep", type=float, default=0.2)
     args = ap.parse_args()
 
@@ -64,7 +66,7 @@ def main():
             err = None
             resp = None
             try:
-                resp = call_ask(args.api_url, DEFAULT_PROMPT, c["url"])
+                resp = call_ask(args.api_url, DEFAULT_PROMPT, c["url"], args.scope)
                 text = extract_text(resp)
             except Exception as e:
                 text = ""

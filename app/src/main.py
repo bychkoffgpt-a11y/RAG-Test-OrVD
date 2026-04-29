@@ -304,7 +304,8 @@ def openai_compat(payload: dict, request: Request):
                 'Режим chart: верни только структурированные поля (legend, axis, points/trends, uncertainties) '
                 'без лишних пояснений.'
             )
-        ask_payload = AskRequest(question=question, top_k=8, scope='all', attachments=attachments)
+        rag_scope = str(payload.get('rag_scope', 'all'))
+        ask_payload = AskRequest(question=question, top_k=8, scope=rag_scope, attachments=attachments)
         try:
             answer = orch.answer(
                 ask_payload,

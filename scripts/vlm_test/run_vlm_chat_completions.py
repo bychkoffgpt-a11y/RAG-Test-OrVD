@@ -11,7 +11,7 @@ USER_TEXT = (
     "потом отдельно пунктом напиши, что не удалось надёжно распознать."
 )
 
-def call_chat(api_url: str, model: str, image_url: str, timeout: int = 120):
+def call_chat(api_url: str, model: str, image_url: str, rag_scope: str, timeout: int = 120):
     payload = {
         "model": model,
         "messages": [
@@ -24,7 +24,8 @@ def call_chat(api_url: str, model: str, image_url: str, timeout: int = 120):
                 ]
             }
         ],
-        "temperature": 0.0
+        "temperature": 0.0,
+        "rag_scope": rag_scope,
     }
     r = requests.post(f"{api_url.rstrip('/')}/v1/chat/completions", json=payload, timeout=timeout)
     r.raise_for_status()
@@ -42,6 +43,7 @@ def main():
     ap.add_argument("--model", default="local-vlm")
     ap.add_argument("--cases", default="vlm_test_cases.json")
     ap.add_argument("--out", default="vlm_chat_results.jsonl")
+    ap.add_argument("--rag-scope", default="none", help="RAG scope для /v1/chat/completions: all|csv_ans_docs|internal_regulations|none")
     ap.add_argument("--sleep", type=float, default=0.2)
     args = ap.parse_args()
 
@@ -54,7 +56,7 @@ def main():
             err = None
             resp = None
             try:
-                resp = call_chat(args.api_url, args.model, c["url"])
+                resp = call_chat(args.api_url, args.model, c["url"], args.rag_scope)
                 text = extract_text(resp)
             except Exception as e:
                 text = ""
