@@ -53,3 +53,32 @@ python3 scripts/run_vision_regression.py --api-url http://localhost:8000
 - Все unit-тесты зелёные.
 - Integration-тесты зелёные для изменений API/контрактов.
 - Для retrieval/chunking/prompt изменений — обязательный регрессионный прогон релевантных тестов.
+
+## Быстрый bootstrap Python-окружения и тестов
+
+Для хостов с нестабильным доступом к `pypi.org` используйте подготовленные скрипты:
+
+```bash
+# создать .venv и установить зависимости из app/pyproject.toml (+ dev)
+./scripts/setup_python_env.sh
+
+# запустить полный тестовый набор
+./scripts/run_pytest_suite.sh
+```
+
+Скрипт `setup_python_env.sh` поддерживает переменные из `.env`:
+- `PIP_INDEX_URL` — основной индекс;
+- `PIP_FALLBACK_INDEX_URL` — fallback-зеркало при ошибке основного;
+- `PIP_EXTRA_INDEX_URL` — дополнительный индекс (например, для wheel'ов torch).
+
+Примеры:
+```bash
+# пересоздать окружение
+./scripts/setup_python_env.sh --recreate
+
+# только unit-тесты
+./scripts/run_pytest_suite.sh --unit
+
+# только integration-тесты
+./scripts/run_pytest_suite.sh --integration
+```
