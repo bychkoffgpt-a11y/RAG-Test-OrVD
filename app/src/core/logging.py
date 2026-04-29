@@ -79,11 +79,25 @@ def configure_logging() -> None:
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(JsonFormatter())
 
-    file_handler = logging.FileHandler(file_path)
-    file_handler.setFormatter(JsonFormatter())
-
     root.addHandler(stream_handler)
-    root.addHandler(file_handler)
+
+    file_handler = None
+    try:
+        file_handler = logging.FileHandler(file_path)
+    except (PermissionError, OSError):
+        fallback_file_path = os.path.join(fallback_log_dir, 'support-api.log')
+        if fallback_file_path != file_path:
+            try:
+                os.makedirs(fallback_log_dir, exist_ok=True)
+                file_handler = logging.FileHandler(fallback_file_path)
+            except (PermissionError, OSError):
+                file_handler = None
+
+    if file_handler is not None:
+        file_handler.setFormatter(JsonFormatter())
+        root.addHandler(file_handler)
+    else:
+        root.warning('File logging disabled: cannot create log file handler.')
 
     if settings.suppress_metrics_access_logs:
         uvicorn_access_logger = logging.getLogger('uvicorn.access')
