@@ -1,4 +1,19 @@
-def build_vision_prompt(question: str, visual_evidence: list[dict] | None = None) -> str:
+def build_prompt(question: str, contexts: list[dict], visual_evidence: list[dict] | None = None) -> str:
+    context_lines = []
+    for idx, item in enumerate(contexts, start=1):
+        source_label = f"{item.get('source_type', 'unknown_source')}/{item.get('doc_id', 'unknown_doc')}"
+        page_number = item.get('page_number')
+        page_suffix = f", стр. {page_number}" if page_number is not None else ''
+        # Совместимость с диагностическими контекстами:
+        # основное поле retriever/orchestrator — `text`,
+        # в trace-отчётах может присутствовать только `text_preview`.
+        context_text = item.get('text')
+        if context_text is None:
+            context_text = item.get('text_preview', '')
+        context_lines.append(
+            f"[{idx}] {context_text} (источник: {source_label}{page_suffix})"
+        )
+
     evidence_lines = []
     for idx, item in enumerate(visual_evidence or [], start=1):
         summary = item.get('summary', '')
@@ -9,31 +24,8 @@ def build_vision_prompt(question: str, visual_evidence: list[dict] | None = None
             f"[IMG-{idx}] {summary} (confidence={confidence}, path={image_path})\nOCR:\n{ocr_text}"
         )
 
-    evidence_block = '\n\n'.join(evidence_lines) if evidence_lines else 'Нет приложенных скриншотов.'
-    return f"""
-Вопрос:
-{question}
-
-Сигналы со скриншотов:
-{evidence_block}
-""".strip()
-
-
-def build_prompt(question: str, contexts: list[dict], visual_evidence: list[dict] | None = None) -> str:
-    context_lines = []
-    for idx, item in enumerate(contexts, start=1):
-        source_label = f"{item.get('source_type', 'unknown_source')}/{item.get('doc_id', 'unknown_doc')}"
-        page_number = item.get('page_number')
-        page_suffix = f", стр. {page_number}" if page_number is not None else ''
-        context_text = item.get('text')
-        if context_text is None:
-            context_text = item.get('text_preview', '')
-        context_lines.append(
-            f"[{idx}] {context_text} (источник: {source_label}{page_suffix})"
-        )
-
     context_block = '\n'.join(context_lines)
-    vision_block = build_vision_prompt(question, visual_evidence=visual_evidence)
+    evidence_block = '\n\n'.join(evidence_lines) if evidence_lines else 'Нет приложенных скриншотов.'
     return f"""
 Ты — помощник первой линии поддержки ЦСВ АНС.
 Отвечай только на основе контекста ниже.
@@ -45,7 +37,11 @@ def build_prompt(question: str, contexts: list[dict], visual_evidence: list[dict
 Не добавляй в ответ блоки "Основание", "Источники", маркеры вида [1]/[2] или ссылки на документы.
 Источники будут добавлены системой автоматически.
 
-{vision_block}
+Вопрос:
+{question}
+
+Сигналы со скриншотов:
+{evidence_block}
 
 Контекст:
 {context_block}

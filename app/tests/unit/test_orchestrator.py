@@ -91,7 +91,7 @@ class _RetrieverWithOneContext:
 
 
 class _LlmWithFixedAnswer:
-    def generate(self, prompt, max_tokens=512, temperature=0.1, trace=None, **kwargs):
+    def generate(self, prompt, max_tokens=512, temperature=0.1, trace=None):
         if trace is not None:
             trace["answer"] = "Тестовый ответ"
         return 'Тестовый ответ'
