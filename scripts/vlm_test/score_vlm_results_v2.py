@@ -250,6 +250,25 @@ def parse_jsonl(path: Path) -> List[Dict[str, Any]]:
                 })
     return rows
 
+
+def extract_scoring_text(row: Dict[str, Any]) -> Tuple[str, str]:
+    """Prefer OCR/structured visual evidence; fallback to plain answer text."""
+    raw_response = row.get("raw_response")
+    if isinstance(raw_response, dict):
+        visual_evidence = raw_response.get("visual_evidence")
+        if isinstance(visual_evidence, list) and visual_evidence:
+            pieces: List[str] = []
+            for ev in visual_evidence:
+                if not isinstance(ev, dict):
+                    continue
+                for key in ("ocr_text", "summary", "task_type"):
+                    value = ev.get(key)
+                    if isinstance(value, str) and value.strip():
+                        pieces.append(value.strip())
+            if pieces:
+                return "\n".join(pieces), "visual_evidence"
+    return row.get("answer_text") or "", "answer_text"
+
 def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_threshold: float = 0.6) -> Dict[str, Any]:
     per_case = []
     lat = []
@@ -270,7 +289,7 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         url = r.get("url", "")
         grp = r.get("task_type_routed") or r.get("task_type") or classify_group(cid, url)
 
-        ans = r.get("answer_text") or ""
+        ans, scored_from = extract_scoring_text(r)
         err = r.get("error")
         if err:
             errors += 1
@@ -315,6 +334,7 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
             "task_type_routed": r.get("task_type_routed", ""),
             "latency_ms": latency,
             "error": err or "",
+            "scored_from": scored_from,
             "golden_total": len(golden),
             "golden_hard_hits": gold_hard,
             "golden_hard_recall": round(case_gold_hard_recall, 4),
