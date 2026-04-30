@@ -28,8 +28,7 @@ dependencies = [
   "paddleocr==2.8.1",
   "paddlepaddle==2.6.2",
   "pillow==10.4.0",
-  "accelerate>=0.26.0",
-  "astor==0.8.1"
+  "accelerate>=0.26.0"
 ]
 
 [tool.setuptools]
@@ -53,7 +52,4 @@ markers = [
   "unit: fast isolated tests",
   "integration: tests with external services",
   "slow: longer-running tests"
-]
-filterwarnings = [
-  "ignore:ast\.Num is deprecated and will be removed in Python 3\.14; use ast\.Constant instead:DeprecationWarning:astor\.op_util"
 ]
