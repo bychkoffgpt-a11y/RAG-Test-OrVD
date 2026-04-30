@@ -164,7 +164,7 @@ def test_analyze_single_image_skips_large_image(monkeypatch, tmp_path):
 
 def test_parse_vlm_json_valid_payload():
     service = VisionService()
-    parsed = service._parse_vlm_json('{"visible_facts":["Error 500"],"uncertain_facts":["button may be disabled"],"negative_facts":[],"confidence":0.9}')
+    parsed = service._parse_vlm_json('{"visible_facts":["Error 500"],"uncertain_facts":["button may be disabled"],"not_visible":[],"confidence":0.9}')
     assert parsed is not None
     assert parsed.visible_facts == ['Error 500']
 
@@ -192,7 +192,7 @@ def test_run_vlm_repairs_invalid_json(monkeypatch, tmp_path):
             self.calls += 1
             if self.calls == 1:
                 return 'not-json'
-            return '{"visible_facts":["ok"],"uncertain_facts":[],"negative_facts":[],"confidence":0.7}'
+            return '{"visible_facts":["ok"],"uncertain_facts":[],"not_visible":[],"confidence":0.7}'
 
     class DummyTorch:
         class _NoGrad:
@@ -229,7 +229,7 @@ def test_detect_task_type_routes_chart_sign_text():
 
 def test_compose_structured_text_limits_chart_points(monkeypatch):
     service = VisionService()
-    raw = '{"visible_facts":["A:1","B:2"],"uncertain_facts":["C maybe 3"],"negative_facts":[],"confidence":0.9}'
+    raw = '{"visible_facts":["A:1","B:2"],"uncertain_facts":["C maybe 3"],"not_visible":[],"confidence":0.9}'
     out = service._compose_structured_text(raw)
     assert 'a:1' in out and 'b:2' in out
     assert 'c maybe 3' in out
@@ -238,15 +238,15 @@ def test_compose_structured_text_limits_chart_points(monkeypatch):
 def test_parse_vlm_json_rejects_duplicate_fact_across_sections():
     service = VisionService()
     parsed = service._parse_vlm_json(
-        '{"visible_facts":["Error 500"],"uncertain_facts":[],"negative_facts":["error 500"],"confidence":0.5}'
+        '{"visible_facts":["Error 500"],"uncertain_facts":[],"not_visible":["error 500"],"confidence":0.5}'
     )
     assert parsed is None
 
 
-def test_parse_vlm_json_rejects_negative_facts_with_high_confidence():
+def test_parse_vlm_json_rejects_not_visible_with_high_confidence():
     service = VisionService()
     parsed = service._parse_vlm_json(
-        '{"visible_facts":["Error 500"],"uncertain_facts":[],"negative_facts":["нечитаемо"],"confidence":0.9}'
+        '{"visible_facts":["Error 500"],"uncertain_facts":[],"not_visible":["нечитаемо"],"confidence":0.9}'
     )
     assert parsed is None
 
@@ -255,7 +255,7 @@ def test_parse_vlm_json_conflict_detector_by_key_entities():
     service = VisionService()
     parsed = service._parse_vlm_json(
         '{"visible_facts":["Дата: 01.02.2024","Сумма: 1 200","Label A -> B"],'
-        '"uncertain_facts":[],"negative_facts":["дата: 2024-02-01","сумма:1200","label a → b"],"confidence":0.6}'
+        '"uncertain_facts":[],"not_visible":["дата: 2024-02-01","сумма:1200","label a → b"],"confidence":0.6}'
     )
     assert parsed is None
 
@@ -263,9 +263,9 @@ def test_parse_vlm_json_conflict_detector_by_key_entities():
 def test_parse_vlm_json_low_confidence_moves_facts_to_uncertain():
     service = VisionService()
     parsed = service._parse_vlm_json(
-        '{"visible_facts":["Error 500"],"uncertain_facts":[],"negative_facts":["arrow A -> B"],"confidence":0.3}'
+        '{"visible_facts":["Error 500"],"uncertain_facts":[],"not_visible":["arrow A -> B"],"confidence":0.3}'
     )
     assert parsed is not None
     assert parsed.visible_facts == []
-    assert parsed.negative_facts == []
+    assert parsed.not_visible == []
     assert any('low confidence' in item for item in parsed.uncertain_facts)
