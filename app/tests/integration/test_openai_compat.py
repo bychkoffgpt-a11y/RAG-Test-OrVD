@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import base64
+import hashlib
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -307,3 +308,38 @@ def test_chat_completions_applies_path_aliases(monkeypatch):
     assert response.status_code == 200
     assert dummy.last_payload is not None
     assert dummy.last_payload.attachments[0].image_path == '/data/runtime_uploads/abc.png'
+
+
+def test_chat_completions_passes_stable_image_hash_to_inference(monkeypatch, tmp_path):
+    dummy = DummyOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    monkeypatch.setattr(main_module.settings, 'file_storage_root', str(tmp_path))
+    client = TestClient(app)
+
+    image_bytes = b'\x89PNG\r\n\x1a\nhash-check-image'
+    expected_hash = hashlib.sha256(image_bytes[: 64 * 1024]).hexdigest()
+    data_url = f"data:image/png;base64,{base64.b64encode(image_bytes).decode('ascii')}"
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [{'role': 'user', 'content': [{'type': 'text', 'text': 'Проверь'}, {'type': 'image_url', 'image_url': {'url': data_url}}]}],
+        'stream': False,
+    }
+
+    response = client.post('/v1/chat/completions', json=payload)
+
+    assert response.status_code == 200
+    debug = dummy.last_kwargs['expected_image_debug']
+    assert len(debug) == 1
+    assert debug[0]['sha256_first_64kb'] == expected_hash
+
+
+def test_chat_completions_fails_on_invalid_data_url(monkeypatch):
+    monkeypatch.setattr(main_module, 'orch', DummyOrchestrator())
+    client = TestClient(app)
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [{'role': 'user', 'content': [{'type': 'text', 'text': 'Проверь'}, {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,%%%'}}]}],
+        'stream': False,
+    }
+    response = client.post('/v1/chat/completions', json=payload)
+    assert response.status_code == 400

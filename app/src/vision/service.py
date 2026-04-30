@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Iterable
 
 from src.api.schemas import AttachmentItem, VisionEvidenceItem
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import AliasChoices, BaseModel, Field, ValidationError
 from src.core.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class VlmChartPoint(BaseModel):
 class VlmStructuredResponse(BaseModel):
     visible_facts: list[str] = Field(default_factory=list)
     uncertain_facts: list[str] = Field(default_factory=list)
-    not_visible: list[str] = Field(default_factory=list)
+    negative_facts: list[str] = Field(default_factory=list, validation_alias=AliasChoices('negative_facts', 'not_visible'))
     confidence: float = 0.0
 
     @staticmethod
@@ -42,29 +42,32 @@ class VlmStructuredResponse(BaseModel):
         return normalized
 
     def model_post_init(self, __context) -> None:
-        if self.confidence < 0.5:
+        if self.confidence < 0.35:
             uncertain = [item for item in self.uncertain_facts if item.strip()]
             uncertain.extend([f'{item} (low confidence)' for item in self.visible_facts if item.strip()])
-            uncertain.extend([f'{item} (low confidence: not visible)' for item in self.not_visible if item.strip()])
+            uncertain.extend([f'{item} (low confidence: not visible)' for item in self.negative_facts if item.strip()])
             self.visible_facts = []
-            self.not_visible = []
+            self.negative_facts = []
             self.uncertain_facts = uncertain
 
         normalized_visible = {self._normalize_fact(item) for item in self.visible_facts if item.strip()}
         normalized_uncertain = {self._normalize_fact(item) for item in self.uncertain_facts if item.strip()}
-        normalized_not_visible = {self._normalize_fact(item) for item in self.not_visible if item.strip()}
+        normalized_negative = {self._normalize_fact(item) for item in self.negative_facts if item.strip()}
 
         collisions = (
             (normalized_visible & normalized_uncertain)
-            | (normalized_visible & normalized_not_visible)
-            | (normalized_uncertain & normalized_not_visible)
+            | (normalized_visible & normalized_negative)
+            | (normalized_uncertain & normalized_negative)
         )
         if collisions:
             raise ValueError('VLM response has duplicate facts across sections')
 
-        # Высокая уверенность не должна сопровождаться пометкой "не видно/нечитаемо".
-        if self.confidence >= 0.75 and normalized_not_visible:
-            raise ValueError('High-confidence VLM response cannot contain not_visible facts')
+        # Факты из negative_facts не удаляем: переносим в uncertain для дальнейшей верификации.
+        if normalized_negative:
+            uncertain = [item for item in self.uncertain_facts if item.strip()]
+            uncertain.extend([f'{item} (uncertain: not visible)' for item in self.negative_facts if item.strip()])
+            self.negative_facts = []
+            self.uncertain_facts = uncertain
 
 
 
@@ -270,7 +273,7 @@ class VisionService:
             task_type=task_type,
             visible_facts=(parsed.visible_facts if parsed else []),
             uncertain_facts=(parsed.uncertain_facts if parsed else []),
-            not_visible=(parsed.not_visible if parsed else []),
+            negative_facts=(parsed.negative_facts if parsed else []),
         )
 
     @staticmethod
@@ -646,9 +649,9 @@ class VisionService:
     def _repair_prompt(raw_output: str) -> str:
         return (
             'Исправь ответ. Верни только валидный JSON строго по схеме '
-            '(visible_facts, uncertain_facts, not_visible, confidence). '
+            '(visible_facts, uncertain_facts, negative_facts, confidence). '
             'Не дублируй один и тот же факт в разных секциях. '
-            'Если confidence >= 0.75, массив not_visible должен быть пустым. '
+            'Если confidence >= 0.75, массив negative_facts должен быть пустым. '
             f'Текущий невалидный ответ: {raw_output}'
         )
 
@@ -669,7 +672,7 @@ class VisionService:
         parts = [
             ' '.join(parsed.visible_facts),
             ' '.join(parsed.uncertain_facts),
-            ' '.join(parsed.not_visible),
+            ' '.join(parsed.negative_facts),
         ]
         return self._normalize_for_scoring(' | '.join(p for p in parts if p))
 
@@ -695,7 +698,7 @@ class VisionService:
             if extracted_text.strip():
                 hints.append('Скриншот обработан, обнаружены визуальные элементы')
             else:
-                hints.append('Скриншот обработан, текст не распознан')
+                hints.append('Скриншот обработан')
 
         file_hint = Path(image_path).name
         mode_hint = 'OCR' if mode == 'ocr' else 'VLM'

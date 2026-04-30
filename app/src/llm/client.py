@@ -54,7 +54,8 @@ class LlmClient:
                 message = choices[0].get('message', {})
                 content = message.get('content')
                 if isinstance(content, str) and content.strip():
-                    normalized = self._enforce_russian(content.strip(), max_tokens=max_tokens)
+                    raw_answer = content.strip()
+                    normalized = self._enforce_russian(raw_answer, max_tokens=max_tokens)
                     final_answer = self._continue_if_truncated(
                         answer=normalized,
                         prompt=prompt,
@@ -68,6 +69,7 @@ class LlmClient:
                     )
                     if trace is not None:
                         trace['transport'] = 'chat_completions'
+                        trace['raw_model_output'] = raw_answer
                         trace['answer'] = final_answer
                     return final_answer
 
@@ -85,7 +87,8 @@ class LlmClient:
             trace['completion_status_code'] = completion_resp.status_code
         completion_resp.raise_for_status()
         completion_data = completion_resp.json()
-        normalized = self._enforce_russian(completion_data.get('content', '').strip(), max_tokens=max_tokens)
+        raw_answer = completion_data.get('content', '').strip()
+        normalized = self._enforce_russian(raw_answer, max_tokens=max_tokens)
         final_answer = self._continue_if_truncated(
             answer=normalized,
             prompt=prompt,
@@ -99,6 +102,7 @@ class LlmClient:
         )
         if trace is not None:
             trace['transport'] = 'completion'
+            trace['raw_model_output'] = raw_answer
             trace['answer'] = final_answer
         return final_answer
 
