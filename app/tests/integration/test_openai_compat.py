@@ -122,6 +122,41 @@ def test_vision_debug_recognize_uses_external_prompt(monkeypatch):
     assert data['visual_evidence'][0]['task_type'] == 'text'
 
 
+def test_vision_debug_recognize_materializes_http_image_url(monkeypatch, tmp_path):
+    class DummyHTTPResponse:
+        status_code = 200
+        headers = {'content-type': 'image/png'}
+        content = b'vision-debug-remote'
+
+    def fake_get(url, timeout, follow_redirects):
+        assert url == 'https://example.com/chart.png'
+        assert follow_redirects is True
+        return DummyHTTPResponse()
+
+    dummy = DummyOrchestrator()
+    dummy.vision = DummyVision()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    monkeypatch.setattr(main_module.settings, 'file_storage_root', str(tmp_path))
+    monkeypatch.setattr(main_module.httpx, 'get', fake_get)
+    client = TestClient(app)
+
+    response = client.post(
+        '/vision/debug/recognize',
+        json={
+            'prompt': 'Опиши chart по скриншоту',
+            'attachments': [{'image_path': 'https://example.com/chart.png'}],
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data['answer'] == 'visual:1'
+    assert data['chart_mode'] is True
+    assert data['visual_evidence']
+    assert 'текст не распознан' not in data['answer'].lower()
+
+
+
 def test_vision_debug_recognize_chart_mode(monkeypatch):
     dummy = DummyOrchestrator()
     dummy.vision = DummyVision()
