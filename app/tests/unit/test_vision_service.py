@@ -243,14 +243,12 @@ def test_parse_vlm_json_rejects_duplicate_fact_across_sections():
     assert parsed is None
 
 
-def test_parse_vlm_json_moves_negative_facts_to_uncertain_with_high_confidence():
+def test_parse_vlm_json_rejects_negative_facts_with_high_confidence():
     service = VisionService()
     parsed = service._parse_vlm_json(
         '{"visible_facts":["Error 500"],"uncertain_facts":[],"negative_facts":["нечитаемо"],"confidence":0.9}'
     )
-    assert parsed is not None
-    assert parsed.negative_facts == []
-    assert any('uncertain: not visible' in item for item in parsed.uncertain_facts)
+    assert parsed is None
 
 
 def test_parse_vlm_json_conflict_detector_by_key_entities():
