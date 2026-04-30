@@ -17,7 +17,7 @@ from src.api.ask import router as ask_router
 from src.api.ingest_a import router as ingest_a_router
 from src.api.ingest_b import router as ingest_b_router
 from src.api.sources import router as sources_router
-from src.api.schemas import AskRequest, AttachmentItem
+from src.api.schemas import AskRequest, AttachmentItem, VisionDebugRequest, VisionDebugResponse
 from src.core.logging import configure_logging
 from src.core.request_context import reset_request_id, set_request_id
 from src.core.settings import settings
@@ -397,6 +397,31 @@ def openai_compat(payload: dict, request: Request):
         'images': answer.images,
         'visual_evidence': [item.model_dump() for item in answer.visual_evidence],
     }
+
+
+@app.post('/vision/debug/recognize', response_model=VisionDebugResponse)
+def vision_debug_recognize(payload: VisionDebugRequest):
+    prompt = payload.prompt.strip()
+    if not prompt:
+        return JSONResponse(status_code=400, content={'detail': 'Поле prompt не должно быть пустым.'})
+
+    messages = [{'role': 'user', 'content': [{'type': 'text', 'text': prompt}]}]
+    chart_mode = _looks_like_chart_case(prompt, messages)
+    if chart_mode:
+        prompt = (
+            f'{prompt}\n\n'
+            'Режим chart: верни только структурированные поля (legend, axis, points/trends, uncertainties) '
+            'без лишних пояснений.'
+        )
+
+    raw_visual = orch.vision.analyze_attachments(payload.attachments, prompt)
+    visual_evidence = raw_visual if isinstance(raw_visual, list) else []
+    answer = orch._render_visual_answer(
+        visual_evidence,
+        max_tokens=payload.max_tokens,
+        temperature=payload.temperature,
+    )
+    return VisionDebugResponse(answer=answer, visual_evidence=visual_evidence, chart_mode=chart_mode)
 
 
 @app.get('/v1/models')

@@ -39,6 +39,19 @@ class AskResponse(BaseModel):
     visual_evidence: List[VisionEvidenceItem] = Field(default_factory=list)
 
 
+class VisionDebugRequest(BaseModel):
+    prompt: str = Field(..., min_length=3)
+    attachments: List[AttachmentItem] = Field(..., min_length=1)
+    max_tokens: int = Field(default=1024, ge=1, le=8192)
+    temperature: float = Field(default=0.1, ge=0.0, le=2.0)
+
+
+class VisionDebugResponse(BaseModel):
+    answer: str
+    visual_evidence: List[VisionEvidenceItem] = Field(default_factory=list)
+    chart_mode: bool = False
+
+
 class IngestResponse(BaseModel):
     source_type: str
     processed_files: int
