@@ -13,12 +13,21 @@ def test_analyze_attachments_returns_evidence_even_without_ocr(monkeypatch, tmp_
     service = VisionService()
     monkeypatch.setattr(service, '_run_ocr', lambda path: 'HTTP 500 Internal Server Error')
 
-    evidence = service.analyze_attachments([AttachmentItem(image_path=str(image))], question='Что случилось?')
+    evidence = service.analyze_attachments(
+        [AttachmentItem(image_path=str(image), source_url='https://example.com/screen.png?text=abc')],
+        question='Что случилось?',
+    )
 
     assert len(evidence) == 1
     assert evidence[0].image_path == str(image)
+    assert evidence[0].source_url == 'https://example.com/screen.png?text=abc'
     assert 'HTTP 500' in evidence[0].ocr_text
     assert evidence[0].confidence > 0.5
+
+
+def test_build_summary_uses_basename_without_query():
+    summary = VisionService._build_summary('/tmp/screen.png?text=abc', 'error 500', mode='ocr')
+    assert 'Файл: screen.png' in summary
 
 
 def test_build_document_image_chunks_uses_ocr_and_summary(monkeypatch):

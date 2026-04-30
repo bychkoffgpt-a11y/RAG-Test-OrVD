@@ -6,10 +6,12 @@ from typing import Literal
 class AttachmentItem(BaseModel):
     image_path: str = Field(..., min_length=1)
     page_number: int | None = None
+    source_url: str | None = None
 
 
 class VisionEvidenceItem(BaseModel):
     image_path: str
+    source_url: str | None = None
     ocr_text: str = ''
     summary: str = ''
     confidence: float = 0.0

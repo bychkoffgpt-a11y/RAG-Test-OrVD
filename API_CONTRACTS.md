@@ -14,7 +14,8 @@
   "attachments": [
     {
       "image_path": "/data/screenshot.png",
-      "page_number": 1
+      "page_number": 1,
+      "source_url": "https://example.local/screenshot.png?token=abc"
     }
   ]
 }
@@ -43,6 +44,7 @@
   "visual_evidence": [
     {
       "image_path": "/data/screenshot.png",
+      "source_url": "https://example.local/screenshot.png?token=abc",
       "ocr_text": "...",
       "summary": "...",
       "confidence": 0.91,
