@@ -54,11 +54,13 @@ class Settings(BaseSettings):
     }
     vision_attachment_path_aliases: str = '/app/backend/data/uploads=/data/runtime_uploads'
     vision_model_prompt_runtime: str = (
-        'Проанализируй изображение и верни строго JSON без свободного текста. '
-        'Единая схема: visible_facts (array of strings), uncertain_facts (array of strings), '
-        'not_visible (array of strings), confidence (number 0..1). '
+        'Кратко извлеки факты только из целевого изображения. '
+        'Не домысливай детали интерфейса, окружения или причин. '
+        'Верни строго JSON без свободного текста по схеме: '
+        'visible_facts (array of strings), uncertain_facts (array of strings), '
+        'negative_facts (array of strings), confidence (number 0..1). '
         'Один и тот же факт запрещено повторять в разных массивах. '
-        'Если confidence >= 0.75, массив not_visible обязан быть пустым.'
+        'Если confidence >= 0.75, массив negative_facts обязан быть пустым.'
     )
     vision_model_prompt_ingest: str = (
         'Кратко опиши изображение для индексации документации. '
