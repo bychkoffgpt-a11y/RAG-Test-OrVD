@@ -8,7 +8,6 @@ CASES_FILE="${CASES_FILE:-${ROOT_DIR}/vlm_test_cases.json}"
 OUT_DIR="${OUT_DIR:-${ROOT_DIR}/out/$(date -u +%Y%m%dT%H%M%SZ)}"
 HIT_THRESHOLD="${HIT_THRESHOLD:-0.6}"
 RAG_SCOPE="${RAG_SCOPE:-none}"
-CHAT_P95_THRESHOLD_MS="${CHAT_P95_THRESHOLD_MS:-0}"
 
 mkdir -p "$OUT_DIR"
 
@@ -57,13 +56,6 @@ python3 "${ROOT_DIR}/summarize_vlm_diagnostics.py" \
   --ask-summary "${OUT_DIR}/vlm_ask_score_v2_summary.json" \
   --chat-summary "${OUT_DIR}/vlm_chat_score_v2_summary.json" \
   --out-markdown "${OUT_DIR}/comparison.md"
-
-if [[ "${CHAT_P95_THRESHOLD_MS}" != "0" ]]; then
-  echo "[7/6] /chat p95 threshold check"
-  python3 "${ROOT_DIR}/check_chat_p95_threshold.py" \
-    --input "${OUT_DIR}/vlm_chat_results.jsonl" \
-    --threshold-ms "${CHAT_P95_THRESHOLD_MS}"
-fi
 
 echo "\nDone. Output directory: ${OUT_DIR}"
 echo "- comparison: ${OUT_DIR}/comparison.md"
