@@ -161,6 +161,19 @@ def _normalize_attachment_path(raw_url: str) -> str | None:
     return _resolve_path_alias(normalized)
 
 
+def _normalize_attachments_for_runtime(attachments: list[AttachmentItem]) -> list[AttachmentItem]:
+    normalized_items: list[AttachmentItem] = []
+    for item in attachments:
+        normalized_path = _normalize_attachment_path(item.image_path)
+        if not normalized_path:
+            continue
+        if normalized_path.startswith(('http://', 'https://', 'data:image/')):
+            logger.warning('attachment_runtime_normalization_unresolved', extra={'path': item.image_path})
+            continue
+        normalized_items.append(AttachmentItem(image_path=normalized_path, page_number=item.page_number))
+    return normalized_items
+
+
 def _extract_attachments_from_message_content(content) -> list[AttachmentItem]:
     attachments: list[AttachmentItem] = []
     if not isinstance(content, list):
@@ -184,12 +197,9 @@ def _extract_attachments_from_message_content(content) -> list[AttachmentItem]:
         if not isinstance(raw_url, str) or not raw_url.strip():
             continue
 
-        normalized = _normalize_attachment_path(raw_url)
-        if not normalized:
-            continue
-        attachments.append(AttachmentItem(image_path=normalized))
+        attachments.append(AttachmentItem(image_path=raw_url.strip()))
 
-    return attachments
+    return _normalize_attachments_for_runtime(attachments)
 
 
 def _looks_like_chart_case(question: str, messages: list[dict]) -> bool:
@@ -414,7 +424,8 @@ def vision_debug_recognize(payload: VisionDebugRequest):
             'без лишних пояснений.'
         )
 
-    raw_visual = orch.vision.analyze_attachments(payload.attachments, prompt)
+    normalized_attachments = _normalize_attachments_for_runtime(payload.attachments)
+    raw_visual = orch.vision.analyze_attachments(normalized_attachments, prompt)
     visual_evidence = raw_visual if isinstance(raw_visual, list) else []
     answer = orch._render_visual_answer(
         visual_evidence,
