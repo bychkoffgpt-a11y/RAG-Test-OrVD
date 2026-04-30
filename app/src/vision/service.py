@@ -42,7 +42,7 @@ class VlmStructuredResponse(BaseModel):
         return normalized
 
     def model_post_init(self, __context) -> None:
-        if self.confidence < 0.35:
+        if self.confidence < 0.5:
             uncertain = [item for item in self.uncertain_facts if item.strip()]
             uncertain.extend([f'{item} (low confidence)' for item in self.visible_facts if item.strip()])
             uncertain.extend([f'{item} (low confidence: not visible)' for item in self.negative_facts if item.strip()])
@@ -62,12 +62,9 @@ class VlmStructuredResponse(BaseModel):
         if collisions:
             raise ValueError('VLM response has duplicate facts across sections')
 
-        # Факты из negative_facts не удаляем: переносим в uncertain для дальнейшей верификации.
-        if normalized_negative:
-            uncertain = [item for item in self.uncertain_facts if item.strip()]
-            uncertain.extend([f'{item} (uncertain: not visible)' for item in self.negative_facts if item.strip()])
-            self.negative_facts = []
-            self.uncertain_facts = uncertain
+        # Высокая уверенность не должна сопровождаться пометкой "не видно/нечитаемо".
+        if self.confidence >= 0.75 and normalized_negative:
+            raise ValueError('High-confidence VLM response cannot contain negative_facts')
 
 
 
@@ -698,7 +695,7 @@ class VisionService:
             if extracted_text.strip():
                 hints.append('Скриншот обработан, обнаружены визуальные элементы')
             else:
-                hints.append('Скриншот обработан')
+                hints.append('Скриншот обработан, текст не распознан')
 
         file_hint = Path(image_path).name
         mode_hint = 'OCR' if mode == 'ocr' else 'VLM'
