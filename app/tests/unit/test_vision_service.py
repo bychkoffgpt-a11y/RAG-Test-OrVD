@@ -94,7 +94,7 @@ def test_runtime_mode_vlm_uses_vlm_extractor(monkeypatch, tmp_path):
     image.write_bytes(b'fake')
     service = VisionService()
     monkeypatch.setattr('src.vision.service.settings.vision_runtime_mode', 'vlm', raising=False)
-    monkeypatch.setattr(service, '_run_vlm', lambda path, question, deadline=None: 'Detected app error screen')
+    monkeypatch.setattr(service, '_run_vlm', lambda path, question, deadline=None, allow_raw_fallback=False: 'Detected app error screen')
     ocr_mock = Mock()
     monkeypatch.setattr(service, '_run_ocr', ocr_mock)
 
@@ -102,14 +102,15 @@ def test_runtime_mode_vlm_uses_vlm_extractor(monkeypatch, tmp_path):
 
     assert len(evidence) == 1
     assert evidence[0].summary
-    assert evidence[0].ocr_text == ''
+    assert evidence[0].ocr_text == 'Detected app error screen'
+    assert evidence[0].vlm_output_format == 'raw'
     ocr_mock.assert_not_called()
 
 
 def test_ingest_mode_vlm_builds_vlm_chunks(monkeypatch):
     service = VisionService()
     monkeypatch.setattr('src.vision.service.settings.vision_ingest_mode', 'vlm', raising=False)
-    monkeypatch.setattr(service, '_run_vlm', lambda path, question, deadline=None: 'Screenshot of settings panel')
+    monkeypatch.setattr(service, '_run_vlm', lambda path, question, deadline=None, allow_raw_fallback=False: 'Screenshot of settings panel')
     ocr_mock = Mock()
     monkeypatch.setattr(service, '_run_ocr', ocr_mock)
 
@@ -211,6 +212,50 @@ def test_run_vlm_repairs_invalid_json(monkeypatch, tmp_path):
 
     result = service._run_vlm(str(image), question='q', deadline=None)
     assert 'visible_facts' in result
+
+
+def test_run_vlm_runtime_fallback_keeps_raw_text_when_json_invalid(monkeypatch, tmp_path):
+    image = tmp_path / 'screen.png'
+    image.write_bytes(b'fake')
+    service = VisionService()
+
+    class DummyProcessor:
+        def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=True):
+            return messages[0]['content'][1]['text']
+
+        def __call__(self, text, images, return_tensors='pt', padding=True):
+            return {}
+
+        def batch_decode(self, generated, **kwargs):
+            return [generated]
+
+    class DummyModel:
+        def __init__(self):
+            self.calls = 0
+
+        def generate(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return 'first non-json output'
+            return 'second still invalid'
+
+    class DummyTorch:
+        class _NoGrad:
+            def __enter__(self):
+                return None
+            def __exit__(self, exc_type, exc, tb):
+                return False
+        @staticmethod
+        def no_grad():
+            return DummyTorch._NoGrad()
+
+    monkeypatch.setattr('src.vision.service.Path.exists', lambda self: True)
+    monkeypatch.setattr(service, '_get_vlm_client', lambda: (DummyProcessor(), DummyModel(), 'cpu'))
+    monkeypatch.setitem(sys.modules, 'torch', DummyTorch())
+    monkeypatch.setitem(sys.modules, 'PIL', type('P', (), {'Image': type('I', (), {'open': staticmethod(lambda *_: type('Img', (), {'convert': lambda self, _: self})())})})())
+
+    result = service._run_vlm(str(image), question='q', deadline=None, allow_raw_fallback=True)
+    assert result == 'second still invalid'
 
 
 def test_normalize_for_scoring_handles_numbers_dates_units():

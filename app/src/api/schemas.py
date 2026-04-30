@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List
+from typing import Literal
 
 
 class AttachmentItem(BaseModel):
@@ -13,6 +14,7 @@ class VisionEvidenceItem(BaseModel):
     summary: str = ''
     confidence: float = 0.0
     task_type: str = 'text'
+    vlm_output_format: Literal['json', 'raw'] | None = None
 
 
 class AskRequest(BaseModel):
