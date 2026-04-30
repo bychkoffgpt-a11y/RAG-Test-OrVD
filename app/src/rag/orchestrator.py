@@ -69,10 +69,14 @@ class RagOrchestrator:
             summary = str(item.get('summary') or '').strip()
             ocr_text = str(item.get('ocr_text') or '').strip()
             task_type = str(item.get('task_type') or 'text').strip()
+            vlm_output_format = str(item.get('vlm_output_format') or '').strip()
             if summary:
                 lines.append(f'[{idx}] ({task_type}) {summary}')
             if ocr_text:
-                lines.append(ocr_text)
+                if vlm_output_format == 'raw':
+                    lines.append(f'VLM raw output:\n{ocr_text}')
+                else:
+                    lines.append(ocr_text)
 
         return '\n'.join(lines).strip()
 

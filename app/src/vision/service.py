@@ -175,6 +175,7 @@ class VisionService:
                 question=settings.vision_model_prompt_ingest,
                 mode=ingest_mode,
                 deadline=None,
+                allow_raw_fallback=False,
             )
             summary = self._build_summary(image_path, extracted_text, mode=ingest_mode)
             body_label = 'OCR' if ingest_mode == 'ocr' else 'VLM'
@@ -225,6 +226,7 @@ class VisionService:
             question=self._build_task_instruction(question=question, task_type=task_type),
             mode=mode,
             deadline=deadline,
+            allow_raw_fallback=True,
         )
         if cleanup_path:
             try:
@@ -233,7 +235,15 @@ class VisionService:
                 logger.debug('vision_chart_temp_cleanup_failed', extra={'image_path': cleanup_path})
         summary = self._build_summary(image_path, extracted_text, mode=mode)
         confidence = self._estimate_confidence(extracted_text)
-        ocr_text = extracted_text if mode == 'ocr' else self._compose_structured_text(extracted_text)
+        vlm_output_format: str | None = None
+        if mode == 'ocr':
+            ocr_text = extracted_text
+        else:
+            ocr_text = self._compose_structured_text(extracted_text)
+            if extracted_text.strip():
+                vlm_output_format = 'json' if self._parse_vlm_json(extracted_text) is not None else 'raw'
+            if not ocr_text and vlm_output_format == 'raw':
+                ocr_text = extracted_text.strip()
 
         logger.info(
             'vision_image_processed',
@@ -253,6 +263,7 @@ class VisionService:
             summary=summary,
             confidence=confidence,
             task_type=task_type,
+            vlm_output_format=vlm_output_format,
         )
 
     @staticmethod
@@ -301,9 +312,15 @@ class VisionService:
         question: str,
         mode: str,
         deadline: float | None = None,
+        allow_raw_fallback: bool = False,
     ) -> str:
         if mode == 'vlm':
-            return self._run_vlm(image_path, question=question, deadline=deadline)
+            return self._run_vlm(
+                image_path,
+                question=question,
+                deadline=deadline,
+                allow_raw_fallback=allow_raw_fallback,
+            )
         return self._run_ocr(image_path)
 
     @staticmethod
@@ -550,7 +567,14 @@ class VisionService:
             return torch_module.bfloat16
         return torch_module.float16 if torch_module.cuda.is_available() else torch_module.float32
 
-    def _run_vlm(self, image_path: str, *, question: str, deadline: float | None) -> str:
+    def _run_vlm(
+        self,
+        image_path: str,
+        *,
+        question: str,
+        deadline: float | None,
+        allow_raw_fallback: bool = False,
+    ) -> str:
         if not os.path.exists(image_path):
             logger.warning('vision_image_not_found', extra={'image_path': image_path})
             return ''
@@ -618,6 +642,13 @@ class VisionService:
                 repaired = repaired[len(repair_prompt):].strip()
             if self._parse_vlm_json(repaired) is None:
                 logger.warning('vision_vlm_json_invalid_after_retry', extra={'image_path': image_path})
+                if allow_raw_fallback:
+                    fallback = (repaired or result).strip()
+                    logger.info(
+                        'vision_vlm_raw_fallback_used',
+                        extra={'image_path': image_path, 'fallback_length': len(fallback)},
+                    )
+                    return fallback
                 return ''
             return repaired
         except Exception:
