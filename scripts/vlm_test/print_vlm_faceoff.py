@@ -12,13 +12,35 @@ def _is_summary_filename(path: Path) -> bool:
     return name.endswith("_summary.json") or name.endswith("_v2_summary.json")
 
 
+def _summary_to_results_candidate(path: Path) -> Path | None:
+    name = path.name
+    candidates = []
+    if name.endswith("_score_v2_summary.json"):
+        candidates.append(name.replace("_score_v2_summary.json", "_results.jsonl"))
+    if name.endswith("_score_summary.json"):
+        candidates.append(name.replace("_score_summary.json", "_results.jsonl"))
+    if name.endswith("_summary.json"):
+        candidates.append(name.replace("_summary.json", "_results.jsonl"))
+
+    for c in candidates:
+        candidate = path.with_name(c)
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _format_hint(path: Path) -> str:
-    return (
+    hint = (
         "Expected input format: JSONL where each line is a case object "
         "with fields like 'id', 'answer_text', 'golden_facts', 'negative_facts'.\n"
         f"Got: {path}\n"
         "Example of a correct file: scripts/vlm_test/out/<timestamp>/vlm_ask_results.jsonl"
     )
+
+    suggested = _summary_to_results_candidate(path)
+    if suggested is not None:
+        hint += f"\nDetected summary file. Try this results file instead: {suggested}"
+    return hint
 
 
 def load_jsonl(path: Path) -> List[Dict[str, Any]]:
