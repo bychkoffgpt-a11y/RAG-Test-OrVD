@@ -24,6 +24,7 @@ class DummyVisualEvidence:
     ocr_text: str = 'HTTP 500'
     summary: str = 'Ошибка на экране'
     confidence: float = 0.8
+    task_type: str = 'text'
 
     def model_dump(self):
         return {
@@ -31,6 +32,7 @@ class DummyVisualEvidence:
             'ocr_text': self.ocr_text,
             'summary': self.summary,
             'confidence': self.confidence,
+            'task_type': self.task_type,
         }
 
 
@@ -62,6 +64,17 @@ class DummyOrchestrator:
         self.last_temperature = temperature
         return DummyAnswer()
 
+    def _render_visual_answer(self, visual_evidence, max_tokens: int, temperature: float):
+        self.last_max_tokens = max_tokens
+        self.last_temperature = temperature
+        return f'visual:{len(visual_evidence)}'
+
+
+class DummyVision:
+    def analyze_attachments(self, attachments, question):
+        item = DummyVisualEvidence(task_type='chart' if 'chart' in question.lower() else 'text')
+        return [item.model_dump()]
+
 
 def test_chat_completions_non_stream_returns_200(monkeypatch):
     dummy = DummyOrchestrator()
@@ -84,6 +97,45 @@ def test_chat_completions_non_stream_returns_200(monkeypatch):
     assert 'Источники для скачивания' in data['choices'][0]['message']['content']
     assert '/sources/csv_ans_docs/doc-1/download' in data['choices'][0]['message']['content']
     assert data['visual_evidence'][0]['image_path'] == '/tmp/screen.png'
+
+
+def test_vision_debug_recognize_uses_external_prompt(monkeypatch):
+    dummy = DummyOrchestrator()
+    dummy.vision = DummyVision()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    client = TestClient(app)
+
+    response = client.post(
+        '/vision/debug/recognize',
+        json={
+            'prompt': 'Опиши изображение',
+            'attachments': [{'image_path': '/tmp/screen.png'}],
+            'max_tokens': 333,
+            'temperature': 0.2,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data['answer'] == 'visual:1'
+    assert data['chart_mode'] is False
+    assert data['visual_evidence'][0]['task_type'] == 'text'
+
+
+def test_vision_debug_recognize_chart_mode(monkeypatch):
+    dummy = DummyOrchestrator()
+    dummy.vision = DummyVision()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    client = TestClient(app)
+
+    response = client.post(
+        '/vision/debug/recognize',
+        json={'prompt': 'Опиши chart и legend', 'attachments': [{'image_path': '/tmp/chart.png'}]},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data['chart_mode'] is True
 
 
 def test_chat_completions_stream_returns_sse_chunks(monkeypatch):

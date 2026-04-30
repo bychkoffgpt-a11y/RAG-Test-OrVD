@@ -23,6 +23,7 @@
 
 ## Мультимодальный режим (single-cutover)
 - `/ask` и `/v1/chat/completions` принимают текст и изображения пользователя.
+- `/vision/debug/recognize` — отдельный debug endpoint для проверки только vision-ветки с внешним prompt.
 - Скриншоты проходят OCR + визуальный анализ; результат включается в prompt и возвращается полем `visual_evidence`.
 - Ingest DOCX/PDF извлекает изображения, строит OCR/caption чанки и индексирует их в Qdrant наравне с текстом.
 - В `/v1/chat/completions` поддержаны image-вложения форматов `file://`, `data:image/...;base64,...` и `http(s)://...` (с материализацией в `${FILE_STORAGE_ROOT}/runtime_uploads`).
@@ -502,6 +503,15 @@ python3 scripts/run_vision_regression.py --expected-runtime-mode vlm --expected-
 Запуск:
 ```bash
 python3 scripts/run_vlm_recognition_checks.py --work-dir data/vision_vlm_checks --keep-assets
+```
+
+Для расширенной диагностики `/ask` + `/v1/chat/completions` + `/vision/debug/recognize`:
+```bash
+./scripts/vlm_test/run_full_diagnostics.sh
+./scripts/vlm_test/run_full_diagnostics.sh \
+  VISION_PROMPT="Проанализируй изображение..." \
+  MAX_TOKENS=512 \
+  TEMPERATURE=0.1
 ```
 
 > Скрипт ожидает, что `./data` смонтирован в `support-api` как `/data` (штатная конфигурация `docker-compose.yml`).

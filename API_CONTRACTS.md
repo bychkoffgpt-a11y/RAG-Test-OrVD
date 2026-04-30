@@ -92,6 +92,47 @@ OpenAI-compatible endpoint.
 
 ---
 
+### `POST /vision/debug/recognize`
+Диагностический endpoint для отладки runtime-распознавания (VLM/OCR) без RAG retrieval.
+
+Поведение:
+- принимает prompt только извне (сервер не подставляет fallback prompt);
+- поддерживает chart-case детекцию, как `/v1/chat/completions`;
+- ответ формируется той же визуальной веткой, что и в chat (`visual_evidence` + генерация финального текста).
+
+**Request:**
+```json
+{
+  "prompt": "Проанализируй изображение, распознай весь текст...",
+  "attachments": [
+    {
+      "image_path": "/data/screenshot.png"
+    }
+  ],
+  "max_tokens": 1024,
+  "temperature": 0.1
+}
+```
+
+**Response:**
+```json
+{
+  "answer": "...",
+  "visual_evidence": [
+    {
+      "image_path": "/data/screenshot.png",
+      "ocr_text": "...",
+      "summary": "...",
+      "confidence": 0.91,
+      "task_type": "text"
+    }
+  ],
+  "chart_mode": false
+}
+```
+
+---
+
 ### `POST /ingest/a/run`
 Запускает ingestion корпуса A (`/data/inbox/csv_ans_docs`).
 

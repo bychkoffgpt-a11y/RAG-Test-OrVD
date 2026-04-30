@@ -17,14 +17,16 @@ def fmt(v):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Compare /ask and /chat VLM diagnostics summaries")
+    ap = argparse.ArgumentParser(description="Compare /ask, /chat и /vision/debug/recognize VLM diagnostics summaries")
     ap.add_argument("--ask-summary", required=True)
     ap.add_argument("--chat-summary", required=True)
+    ap.add_argument("--vision-summary")
     ap.add_argument("--out-markdown", default="comparison.md")
     args = ap.parse_args()
 
     ask = load(Path(args.ask_summary))
     chat = load(Path(args.chat_summary))
+    vision = load(Path(args.vision_summary)) if args.vision_summary else {}
 
     ask_s = ask.get("summary", {})
     chat_s = chat.get("summary", {})
@@ -34,8 +36,8 @@ def main():
         "",
         "## Overall",
         "",
-        "| Metric | /ask | /v1/chat/completions | Delta (chat-ask) |",
-        "|---|---:|---:|---:|",
+        "| Metric | /ask | /v1/chat/completions | /vision/debug/recognize | Delta (chat-ask) |",
+        "|---|---:|---:|---:|---:|",
     ]
 
     metrics = [
@@ -50,8 +52,9 @@ def main():
     for m in metrics:
         av = ask_s.get(m)
         cv = chat_s.get(m)
+        vv = (vision.get("summary") or {}).get(m) if vision else None
         delta = (cv - av) if isinstance(av, (int, float)) and isinstance(cv, (int, float)) else None
-        lines.append(f"| {m} | {fmt(av)} | {fmt(cv)} | {fmt(delta)} |")
+        lines.append(f"| {m} | {fmt(av)} | {fmt(cv)} | {fmt(vv)} | {fmt(delta)} |")
 
     lines.extend(["", "## Group-level", ""])
     lines.append("| Group | Metric | /ask | /chat | Delta |")
