@@ -100,7 +100,13 @@ python3 print_vlm_faceoff.py \
 python3 print_vlm_faceoff.py \
   --input out/<timestamp>/vlm_chat_results.jsonl \
   --case img05_chart_sales_q
+
+# важно: для face-off используйте именно results JSONL, а не *_summary.json
+python3 print_vlm_faceoff.py \
+  --input out/<timestamp>/vlm_vision_debug_results.jsonl
 ```
+
+Если передать `*_summary.json` или `*_v2_summary.json`, скрипт завершится с ошибкой формата и подскажет правильный пример файла `vlm_*_results.jsonl`.
 
 Скрипт отмечает:
 - `✓` — факт, вероятно, найден в ответе;
