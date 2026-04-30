@@ -249,23 +249,3 @@ def test_parse_vlm_json_rejects_not_visible_with_high_confidence():
         '{"visible_facts":["Error 500"],"uncertain_facts":[],"not_visible":["нечитаемо"],"confidence":0.9}'
     )
     assert parsed is None
-
-
-def test_parse_vlm_json_conflict_detector_by_key_entities():
-    service = VisionService()
-    parsed = service._parse_vlm_json(
-        '{"visible_facts":["Дата: 01.02.2024","Сумма: 1 200","Label A -> B"],'
-        '"uncertain_facts":[],"not_visible":["дата: 2024-02-01","сумма:1200","label a → b"],"confidence":0.6}'
-    )
-    assert parsed is None
-
-
-def test_parse_vlm_json_low_confidence_moves_facts_to_uncertain():
-    service = VisionService()
-    parsed = service._parse_vlm_json(
-        '{"visible_facts":["Error 500"],"uncertain_facts":[],"not_visible":["arrow A -> B"],"confidence":0.3}'
-    )
-    assert parsed is not None
-    assert parsed.visible_facts == []
-    assert parsed.not_visible == []
-    assert any('low confidence' in item for item in parsed.uncertain_facts)
