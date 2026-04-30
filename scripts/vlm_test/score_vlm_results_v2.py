@@ -207,44 +207,6 @@ def score_fact_hard(answer: str, fact: str, aliases: Dict[str, List[str]]) -> Tu
     hard = 1.0 if len(matched) == len(anchors) else 0.0
     return hard, {"anchors": anchors, "matched": matched, "ratio": hard}
 
-def score_fact_semantic_hard(answer: str, fact: str, aliases: Dict[str, List[str]]) -> Tuple[float, Dict[str, Any]]:
-    ans = norm(answer)
-    f = norm(fact)
-    matched_rules: List[str] = []
-
-    # chart labels rule: Q1..Q4 presence
-    if all(q in f for q in ["q1", "q2", "q3", "q4"]):
-        q_hits = [q for q in ["q1", "q2", "q3", "q4"] if re.search(rf"\b{q}\b", ans)]
-        if len(q_hits) == 4:
-            return 1.0, {"mode": "chart_q1_q4", "matched_rules": ["q1..q4"]}
-        return 0.0, {"mode": "chart_q1_q4", "matched_rules": q_hits}
-
-    # trend direction rule
-    if any(t in f for t in ["рост", "увелич", "спад", "снижен", "паден", "trend", "decreas", "increas"]):
-        up_words = ["рост", "увелич", "вырос", "повыш", "increas", "growth", "uptrend", "upward"]
-        down_words = ["спад", "снижен", "паден", "уменьш", "decreas", "decline", "downtrend", "drop"]
-        need_up = any(w in f for w in up_words)
-        need_down = any(w in f for w in down_words)
-        has_up = any(w in ans for w in up_words)
-        has_down = any(w in ans for w in down_words)
-        if (need_up and has_up) or (need_down and has_down):
-            matched_rules.append("trend_direction")
-
-    # highest / lowest rule
-    highest_tokens = ["самый высокий", "наибольш", "максим", "largest", "highest", "biggest"]
-    lowest_tokens = ["самый низкий", "наименьш", "миним", "smallest", "lowest", "least"]
-    need_high = any(w in f for w in highest_tokens)
-    need_low = any(w in f for w in lowest_tokens)
-    has_high = any(w in ans for w in highest_tokens)
-    has_low = any(w in ans for w in lowest_tokens)
-    if (need_high and has_high) or (need_low and has_low):
-        matched_rules.append("extremum")
-
-    if matched_rules:
-        return 1.0, {"mode": "semantic_rules", "matched_rules": matched_rules}
-
-    return score_fact_hard(answer, fact, aliases)
-
 def classify_group(case_id: str, url: str) -> str:
     s = norm(case_id + " " + (url or ""))
     # Heuristics tailored to provided dataset ids/urls
@@ -321,17 +283,14 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         negative = r.get("negative_facts") or []
 
         gold_scores = []
-        gold_hard_strict = 0
-        gold_hard_semantic = 0
+        gold_hard = 0
         gold_details = []
         for gf in golden:
-            hard_strict, hard_det = score_fact_hard(ans, gf, aliases)
-            hard_sem, sem_det = score_fact_semantic_hard(ans, gf, aliases)
+            hard_sc, _ = score_fact_hard(ans, gf, aliases)
             sc, det = score_fact_partial(ans, gf, aliases)
             gold_scores.append(sc)
-            gold_hard_strict += int(hard_strict)
-            gold_hard_semantic += int(hard_sem)
-            gold_details.append({"fact": gf, "hard_strict": int(hard_strict), "hard_semantic": int(hard_sem), "partial_score": round(sc,4), "matched": det["matched"], "anchors": det["anchors"], "hard_strict_detail": hard_det, "hard_semantic_detail": sem_det})
+            gold_hard += int(hard_sc)
+            gold_details.append({"fact": gf, "hard": int(hard_sc), "partial_score": round(sc,4), "matched": det["matched"], "anchors": det["anchors"]})
 
         neg_scores = []
         neg_hard = 0
@@ -344,8 +303,7 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
             neg_details.append({"fact": nf, "hard": int(hard_sc), "partial_score": round(sc,4), "matched": det["matched"], "anchors": det["anchors"]})
 
         case_gold_partial = (sum(gold_scores) / len(golden)) if golden else 0.0
-        case_gold_hard_recall_strict = (gold_hard_strict / len(golden)) if golden else 0.0
-        case_gold_hard_recall_semantic = (gold_hard_semantic / len(golden)) if golden else 0.0
+        case_gold_hard_recall = (gold_hard / len(golden)) if golden else 0.0
 
         # For negatives: higher match = worse (potential hallucination)
         case_neg_partial = (sum(neg_scores) / len(negative)) if negative else 0.0
@@ -358,10 +316,8 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
             "latency_ms": latency,
             "error": err or "",
             "golden_total": len(golden),
-            "golden_hard_hits_strict": gold_hard_strict,
-            "golden_hard_hits_semantic": gold_hard_semantic,
-            "golden_hard_recall_strict": round(case_gold_hard_recall_strict, 4),
-            "golden_hard_recall_semantic": round(case_gold_hard_recall_semantic, 4),
+            "golden_hard_hits": gold_hard,
+            "golden_hard_recall": round(case_gold_hard_recall, 4),
             "golden_partial_recall": round(case_gold_partial, 4),
             "negative_total": len(negative),
             "negative_hard_hits": neg_hard,
@@ -373,7 +329,7 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
 
         # overall accumulators
         total_gold += len(golden)
-        total_gold_hard_hits += gold_hard_strict
+        total_gold_hard_hits += gold_hard
         total_gold_partial_sum += sum(gold_scores)
 
         total_neg += len(negative)
@@ -383,14 +339,13 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         # group accumulators
         g = by_group.setdefault(grp, {
             "cases": 0,
-            "gold_total": 0, "gold_hard_strict": 0, "gold_hard_semantic": 0, "gold_partial_sum": 0.0,
+            "gold_total": 0, "gold_hard": 0, "gold_partial_sum": 0.0,
             "neg_total": 0, "neg_hard": 0, "neg_partial_sum": 0.0,
             "lat": []
         })
         g["cases"] += 1
         g["gold_total"] += len(golden)
-        g["gold_hard_strict"] += gold_hard_strict
-        g["gold_hard_semantic"] += gold_hard_semantic
+        g["gold_hard"] += gold_hard
         g["gold_partial_sum"] += sum(gold_scores)
         g["neg_total"] += len(negative)
         g["neg_hard"] += neg_hard
@@ -402,10 +357,8 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         "cases_total": len(rows),
         "cases_with_error": errors,
         "golden_total": total_gold,
-        "golden_hard_hits_strict": total_gold_hard_hits,
-        "golden_hard_recall_strict": round((total_gold_hard_hits / total_gold) if total_gold else 0.0, 4),
-        "golden_hard_hits_semantic": sum(g["gold_hard_semantic"] for g in by_group.values()),
-        "golden_hard_recall_semantic": round((sum(g["gold_hard_semantic"] for g in by_group.values()) / total_gold) if total_gold else 0.0, 4),
+        "golden_hard_hits": total_gold_hard_hits,
+        "golden_hard_recall": round((total_gold_hard_hits / total_gold) if total_gold else 0.0, 4),
         "golden_partial_recall": round((total_gold_partial_sum / total_gold) if total_gold else 0.0, 4),
         "negative_total": total_neg,
         "negative_hard_hits": total_neg_hard_hits,
@@ -420,8 +373,7 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
     for grp, g in by_group.items():
         groups[grp] = {
             "cases": g["cases"],
-            "golden_hard_recall_strict": round((g["gold_hard_strict"] / g["gold_total"]) if g["gold_total"] else 0.0, 4),
-            "golden_hard_recall_semantic": round((g["gold_hard_semantic"] / g["gold_total"]) if g["gold_total"] else 0.0, 4),
+            "golden_hard_recall": round((g["gold_hard"] / g["gold_total"]) if g["gold_total"] else 0.0, 4),
             "golden_partial_recall": round((g["gold_partial_sum"] / g["gold_total"]) if g["gold_total"] else 0.0, 4),
             "hallucination_hard_rate": round((g["neg_hard"] / g["neg_total"]) if g["neg_total"] else 0.0, 4),
             "hallucination_partial_rate": round((g["neg_partial_sum"] / g["neg_total"]) if g["neg_total"] else 0.0, 4),
@@ -434,7 +386,7 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
 def write_csv(per_case: List[Dict[str, Any]], path: Path):
     cols = [
         "id","group","task_type_routed","latency_ms","error",
-        "golden_total","golden_hard_hits_strict","golden_hard_hits_semantic","golden_hard_recall_strict","golden_hard_recall_semantic","golden_partial_recall",
+        "golden_total","golden_hard_hits","golden_hard_recall","golden_partial_recall",
         "negative_total","negative_hard_hits","hallucination_hard_rate","hallucination_partial_rate",
         "golden_details_json","negative_details_json"
     ]
@@ -465,8 +417,7 @@ def main():
     print(f"Input file                  : {args.input}")
     print(f"Cases total                 : {s['cases_total']}")
     print(f"Cases with error            : {s['cases_with_error']}")
-    print(f"Golden hard recall (strict) : {s['golden_hard_recall_strict']:.4f} ({s['golden_hard_hits_strict']}/{s['golden_total']})")
-    print(f"Golden hard recall (semant) : {s['golden_hard_recall_semantic']:.4f} ({s['golden_hard_hits_semantic']}/{s['golden_total']})")
+    print(f"Golden hard recall          : {s['golden_hard_recall']:.4f} ({s['golden_hard_hits']}/{s['golden_total']})")
     print(f"Golden partial recall       : {s['golden_partial_recall']:.4f}")
     print(f"Hallucination hard rate     : {s['hallucination_hard_rate']:.4f} ({s['negative_hard_hits']}/{s['negative_total']})")
     print(f"Hallucination partial rate  : {s['hallucination_partial_rate']:.4f}")
@@ -477,7 +428,7 @@ def main():
     print("\n=== BY GROUP ===")
     for g, m in sorted(report["groups"].items()):
         print(f"[{g}] cases={m['cases']}, "
-              f"gold_hard_strict={m['golden_hard_recall_strict']:.4f}, gold_hard_semantic={m['golden_hard_recall_semantic']:.4f}, gold_partial={m['golden_partial_recall']:.4f}, "
+              f"gold_hard={m['golden_hard_recall']:.4f}, gold_partial={m['golden_partial_recall']:.4f}, "
               f"hall_hard={m['hallucination_hard_rate']:.4f}, hall_partial={m['hallucination_partial_rate']:.4f}, "
               f"p50={m['latency_p50_ms']}, p95={m['latency_p95_ms']}")
 
