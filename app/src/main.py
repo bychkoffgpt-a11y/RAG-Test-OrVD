@@ -131,7 +131,12 @@ def _materialize_remote_url(raw_url: str) -> str | None:
         return None
 
     parsed_url = urlparse(raw_url)
-    guessed_suffix = Path(parsed_url.path).suffix
+    parsed_path = parsed_url.path.strip()
+    parsed_query = parsed_url.query.strip()
+    if not parsed_query and '&' in parsed_path and '?' not in raw_url:
+        parsed_path = parsed_path.split('&', 1)[0]
+
+    guessed_suffix = Path(parsed_path).suffix
     if guessed_suffix:
         suffix = guessed_suffix
     else:
@@ -170,7 +175,13 @@ def _normalize_attachments_for_runtime(attachments: list[AttachmentItem]) -> lis
         if normalized_path.startswith(('http://', 'https://', 'data:image/')):
             logger.warning('attachment_runtime_normalization_unresolved', extra={'path': item.image_path})
             continue
-        normalized_items.append(AttachmentItem(image_path=normalized_path, page_number=item.page_number))
+        normalized_items.append(
+            AttachmentItem(
+                image_path=normalized_path,
+                page_number=item.page_number,
+                source_url=item.source_url or item.image_path,
+            )
+        )
     return normalized_items
 
 
@@ -197,7 +208,8 @@ def _extract_attachments_from_message_content(content) -> list[AttachmentItem]:
         if not isinstance(raw_url, str) or not raw_url.strip():
             continue
 
-        attachments.append(AttachmentItem(image_path=raw_url.strip()))
+        clean_url = raw_url.strip()
+        attachments.append(AttachmentItem(image_path=clean_url, source_url=clean_url))
 
     return _normalize_attachments_for_runtime(attachments)
 

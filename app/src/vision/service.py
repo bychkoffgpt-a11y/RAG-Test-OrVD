@@ -8,6 +8,7 @@ import tempfile
 import unicodedata
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlparse
 
 from src.api.schemas import AttachmentItem, VisionEvidenceItem
 from pydantic import BaseModel, Field, ValidationError
@@ -144,6 +145,7 @@ class VisionService:
             evidence.append(
                 self._analyze_single_image(
                     image_path,
+                    source_url=attachment.source_url,
                     question=question,
                     mode=runtime_mode,
                     deadline=deadline,
@@ -195,7 +197,9 @@ class VisionService:
             )
         return chunks
 
-    def _analyze_single_image(self, image_path: str, *, question: str, mode: str, deadline: float | None) -> VisionEvidenceItem:
+    def _analyze_single_image(
+        self, image_path: str, *, source_url: str | None, question: str, mode: str, deadline: float | None
+    ) -> VisionEvidenceItem:
         started = time.perf_counter()
         pixels_limit = int(settings.vision_runtime_max_image_pixels)
         if pixels_limit > 0 and self._image_exceeds_pixels_limit(image_path, max_pixels=pixels_limit):
@@ -208,6 +212,7 @@ class VisionService:
             )
             return VisionEvidenceItem(
                 image_path=image_path,
+                source_url=source_url,
                 ocr_text='',
                 summary=(
                     f'Изображение пропущено: превышен лимит VISION_RUNTIME_MAX_IMAGE_PIXELS={pixels_limit}. '
@@ -259,6 +264,7 @@ class VisionService:
 
         return VisionEvidenceItem(
             image_path=image_path,
+            source_url=source_url,
             ocr_text=ocr_text,
             summary=summary,
             confidence=confidence,
@@ -710,7 +716,8 @@ class VisionService:
             else:
                 hints.append('Скриншот обработан, текст не распознан')
 
-        file_hint = Path(image_path).name
+        parsed = urlparse(image_path)
+        file_hint = Path(parsed.path or image_path).name
         mode_hint = 'OCR' if mode == 'ocr' else 'VLM'
         return f"{'; '.join(hints)}. Метод: {mode_hint}. Файл: {file_hint}"
 
