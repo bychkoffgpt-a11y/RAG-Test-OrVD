@@ -90,16 +90,35 @@ def line_hit(answer: str, fact: str) -> bool:
     return all(token in ans for token in fact.lower().split() if len(token) > 2)
 
 
+def extract_scoring_text(row: Dict[str, Any]) -> tuple[str, str]:
+    """Prefer visual evidence OCR/structured fields, fallback to answer_text."""
+    raw_response = row.get("raw_response")
+    if isinstance(raw_response, dict):
+        visual_evidence = raw_response.get("visual_evidence")
+        if isinstance(visual_evidence, list) and visual_evidence:
+            pieces: list[str] = []
+            for ev in visual_evidence:
+                if not isinstance(ev, dict):
+                    continue
+                for key in ("ocr_text", "summary", "task_type"):
+                    value = ev.get(key)
+                    if isinstance(value, str) and value.strip():
+                        pieces.append(value.strip())
+            if pieces:
+                return "\n".join(pieces), "visual_evidence"
+    return row.get("answer_text", "") or "", "answer_text"
+
+
 def render_case(row: Dict[str, Any], answer_limit: int) -> None:
     case_id = row.get("id", "unknown")
     latency = row.get("latency_ms")
     error = row.get("error")
-    answer = row.get("answer_text", "")
+    answer, scored_from = extract_scoring_text(row)
     gold = row.get("golden_facts", []) or []
     neg = row.get("negative_facts", []) or []
 
     print("=" * 120)
-    print(f"CASE: {case_id} | latency={latency}ms | error={bool(error)}")
+    print(f"CASE: {case_id} | latency={latency}ms | error={bool(error)} | scored_from={scored_from}")
     if error:
         print(f"ERROR: {error}")
 
