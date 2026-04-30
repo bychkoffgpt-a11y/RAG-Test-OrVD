@@ -113,6 +113,40 @@ python3 print_vlm_faceoff.py \
 - `✗` — факт не найден;
 - `⚠` — негативный факт потенциально попал в ответ (риск галлюцинации).
 
+
+## Режимы prompt для `run_vlm_vision_debug.py`
+
+Скрипт `run_vlm_vision_debug.py` поддерживает два режима prompt:
+
+- `json_strict` (по умолчанию) — runtime-совместимый структурный вывод с полями
+  `visible_facts`, `uncertain_facts`, `not_visible`, `confidence`.
+- `freeform` — свободный текстовый вывод без строгой JSON-структуры.
+
+> ⚠️ В режиме `freeform` скоринг по `golden_facts` может деградировать,
+> потому что scorer ожидает более структурируемые факты в ответе.
+
+Примеры запуска:
+
+```bash
+# Рекомендуемый режим: ближе к runtime-контракту
+python3 run_vlm_vision_debug.py --api-url http://localhost:8000 \
+  --cases vlm_test_cases.json --out vlm_vision_debug_results.jsonl \
+  --prompt-mode json_strict
+
+# Свободный режим: удобно для ручного чтения, но хуже для автоматического scoring
+python3 run_vlm_vision_debug.py --api-url http://localhost:8000 \
+  --cases vlm_test_cases.json --out vlm_vision_debug_results_freeform.jsonl \
+  --prompt-mode freeform
+```
+
+Можно переопределить prompt вручную (тогда `--prompt-mode` игнорируется):
+
+```bash
+python3 run_vlm_vision_debug.py --api-url http://localhost:8000 \
+  --cases vlm_test_cases.json --prompt-mode json_strict \
+  --prompt "Свой диагностический prompt"
+```
+
 ## Быстрый debug `/ask`
 
 ```bash
