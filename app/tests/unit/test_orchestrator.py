@@ -199,3 +199,22 @@ def test_orchestrator_returns_response_when_trace_write_permission_error(monkeyp
 
     assert response.answer == 'Тестовый ответ'
     assert len(response.sources) == 1
+
+
+def test_orchestrator_render_visual_answer_handles_dicts_and_models():
+    orch = RagOrchestrator()
+
+    class _Item:
+        def model_dump(self):
+            return {
+                'image_path': '/tmp/a.png',
+                'summary': 'Найден предупреждающий баннер',
+                'ocr_text': 'ERROR 503',
+                'task_type': 'text',
+            }
+
+    answer = orch._render_visual_answer([_Item(), {'summary': 'График продаж', 'task_type': 'chart'}])
+
+    assert 'Найден предупреждающий баннер' in answer
+    assert 'ERROR 503' in answer
+    assert 'График продаж' in answer
