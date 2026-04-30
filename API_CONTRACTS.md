@@ -46,10 +46,7 @@
       "ocr_text": "...",
       "summary": "...",
       "confidence": 0.91,
-      "task_type": "text",
-      "visible_facts": [],
-      "uncertain_facts": [],
-      "not_visible": []
+      "task_type": "text"
     }
   ]
 }

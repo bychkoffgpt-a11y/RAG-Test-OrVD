@@ -13,9 +13,6 @@ class VisionEvidenceItem(BaseModel):
     summary: str = ''
     confidence: float = 0.0
     task_type: str = 'text'
-    visible_facts: List[str] = Field(default_factory=list)
-    uncertain_facts: List[str] = Field(default_factory=list)
-    not_visible: List[str] = Field(default_factory=list)
 
 
 class AskRequest(BaseModel):
