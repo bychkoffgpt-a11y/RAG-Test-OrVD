@@ -1,6 +1,5 @@
 import base64
 import binascii
-import hashlib
 import logging
 import mimetypes
 import uuid
@@ -13,11 +12,6 @@ from src.api.schemas import AttachmentItem
 from src.core.settings import settings
 
 logger = logging.getLogger(__name__)
-_HASH_BYTES_LIMIT = 64 * 1024
-
-
-class AttachmentNormalizationError(ValueError):
-    pass
 
 
 def _ensure_runtime_upload_dir() -> Path:
@@ -68,7 +62,8 @@ def _materialize_data_url(raw_url: str) -> str:
     try:
         decoded = base64.b64decode(payload, validate=True)
     except (ValueError, binascii.Error):
-        raise AttachmentNormalizationError('Invalid data:image base64 payload')
+        logger.warning('attachment_data_url_decode_failed')
+        return ''
     return _write_payload_to_file(decoded, mime, raw_url)
 
 
@@ -79,9 +74,11 @@ def _materialize_remote_url(raw_url: str) -> str:
     try:
         response = httpx.get(raw_url, timeout=timeout, follow_redirects=True)
     except httpx.HTTPError:
-        raise AttachmentNormalizationError(f'Failed to fetch remote image URL: {raw_url}')
+        logger.warning('attachment_remote_fetch_failed', extra={'url': raw_url})
+        return ''
     if response.status_code >= 400:
-        raise AttachmentNormalizationError(f'Remote image URL returned HTTP {response.status_code}: {raw_url}')
+        logger.warning('attachment_remote_bad_status', extra={'url': raw_url, 'status_code': response.status_code})
+        return ''
 
     content_type = str(response.headers.get('content-type', '')).split(';', 1)[0].strip().lower()
     return _write_payload_to_file(response.content, content_type, raw_url)
@@ -150,37 +147,3 @@ def adapt_image_attachments(*, ask_attachments: list | None = None, message_cont
     if max_images > 0:
         return deduped[:max_images]
     return deduped
-
-
-def build_image_debug_info(attachments: list[AttachmentItem], *, trace_id: str, endpoint: str, stage: str) -> list[dict]:
-    info: list[dict] = []
-    for item in attachments:
-        path = str(item.image_path or '').strip()
-        mime = (mimetypes.guess_type(path)[0] or '').lower()
-        byte_size = 0
-        digest = ''
-        try:
-            payload = Path(path).read_bytes()
-            byte_size = len(payload)
-            digest = hashlib.sha256(payload[:_HASH_BYTES_LIMIT]).hexdigest()
-        except OSError:
-            digest = ''
-        info.append(
-            {
-                'image_path': path,
-                'mime': mime,
-                'byte_size': byte_size,
-                'sha256_first_64kb': digest,
-            }
-        )
-    logger.info(
-        'image_adapter_debug',
-        extra={
-            'trace_id': trace_id,
-            'endpoint': endpoint,
-            'stage': stage,
-            'image_count': len(info),
-            'images': info,
-        },
-    )
-    return info

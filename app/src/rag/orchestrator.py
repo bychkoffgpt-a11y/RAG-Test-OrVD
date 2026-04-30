@@ -10,7 +10,6 @@ from src.rag.answer_formatter import collect_images
 from src.rag.prompt_builder import build_prompt
 from src.rag.retriever import Retriever
 from src.rag.trace_card import TraceCardWriter
-from src.rag.vision.input_adapter import build_image_debug_info
 from src.telemetry.metrics import observe_rag_stage_latency
 from src.vision.service import VisionService
 
@@ -63,7 +62,6 @@ class RagOrchestrator:
         presence_penalty: float = 0.05,
         stop: list[str] | None = None,
         stage_logger: Callable[[str, float], None] | None = None,
-        expected_image_debug: list[dict] | None = None,
     ) -> AskResponse:
         started = time.perf_counter()
         trace_id = get_request_id()
@@ -107,13 +105,6 @@ class RagOrchestrator:
         raw_visual = []
         per_request_vision_cache: dict[str, dict] = {}
         if payload.attachments:
-            actual_debug = build_image_debug_info(payload.attachments, trace_id=trace_id, endpoint=endpoint, stage='vision_pre_infer')
-            if expected_image_debug is not None and expected_image_debug != actual_debug:
-                logger.error(
-                    'image_adapter_debug_mismatch',
-                    extra={'trace_id': trace_id, 'endpoint': endpoint, 'expected': expected_image_debug, 'actual': actual_debug},
-                )
-                raise ValueError('Image payload changed between endpoint input and vision inference')
             deduped_attachments = []
             for attachment in payload.attachments:
                 key = attachment.image_path
@@ -213,12 +204,6 @@ class RagOrchestrator:
             trace=llm_trace,
         )
         llm_duration = time.perf_counter() - llm_started
-        raw_model_output = llm_trace.get('raw_model_output')
-        if logger.isEnabledFor(logging.DEBUG) and settings.app_env == 'dev' and raw_model_output:
-            logger.debug(
-                'raw_model_output',
-                extra={'trace_id': trace_id, 'endpoint': endpoint, 'raw_model_output': raw_model_output},
-            )
         _trace(
             'vlm_infer_end',
             latency_ms=round(llm_duration * 1000.0, 3),
@@ -269,10 +254,6 @@ class RagOrchestrator:
                 'visual_evidence': len(visual_evidence),
                 'duration_sec': round(total_duration, 3),
             },
-        )
-        logger.info(
-            'final_output',
-            extra={'trace_id': trace_id, 'endpoint': endpoint, 'final_output': answer},
         )
         logger.info(
             'rag_pipeline_profile',
