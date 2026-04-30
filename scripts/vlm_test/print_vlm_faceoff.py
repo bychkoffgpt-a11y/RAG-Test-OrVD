@@ -7,7 +7,26 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
+def _is_summary_filename(path: Path) -> bool:
+    name = path.name.lower()
+    return name.endswith("_summary.json") or name.endswith("_v2_summary.json")
+
+
+def _format_hint(path: Path) -> str:
+    return (
+        "Expected input format: JSONL where each line is a case object "
+        "with fields like 'id', 'answer_text', 'golden_facts', 'negative_facts'.\n"
+        f"Got: {path}\n"
+        "Example of a correct file: scripts/vlm_test/out/<timestamp>/vlm_ask_results.jsonl"
+    )
+
+
 def load_jsonl(path: Path) -> List[Dict[str, Any]]:
+    if _is_summary_filename(path):
+        raise ValueError(
+            "Summary JSON is not supported by print_vlm_faceoff.py.\n" + _format_hint(path)
+        )
+
     rows: List[Dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as f:
         for line_no, line in enumerate(f, 1):
@@ -15,9 +34,27 @@ def load_jsonl(path: Path) -> List[Dict[str, Any]]:
             if not line:
                 continue
             try:
-                rows.append(json.loads(line))
+                obj = json.loads(line)
             except json.JSONDecodeError as exc:
-                rows.append({"id": f"line_{line_no}", "error": f"json decode error: {exc}"})
+                raise ValueError(
+                    f"Invalid JSONL: line {line_no} is not valid JSON ({exc}).\n"
+                    + _format_hint(path)
+                ) from exc
+
+            if not isinstance(obj, dict):
+                raise ValueError(
+                    f"Invalid JSONL: line {line_no} is {type(obj).__name__}, expected object.\n"
+                    + _format_hint(path)
+                )
+            if "id" not in obj and "answer_text" not in obj:
+                raise ValueError(
+                    f"Invalid JSONL: line {line_no} must include at least 'id' or 'answer_text'.\n"
+                    + _format_hint(path)
+                )
+            rows.append(obj)
+
+    if not rows:
+        raise ValueError("Input file is empty or has no JSONL rows.\n" + _format_hint(path))
     return rows
 
 
@@ -78,7 +115,10 @@ def main() -> None:
     parser.add_argument("--answer-limit", type=int, default=1000, help="Max answer chars to print")
     args = parser.parse_args()
 
-    rows = load_jsonl(Path(args.input))
+    try:
+        rows = load_jsonl(Path(args.input))
+    except ValueError as exc:
+        raise SystemExit(f"Input format error: {exc}")
     if args.case:
         rows = [r for r in rows if r.get("id") == args.case]
 
