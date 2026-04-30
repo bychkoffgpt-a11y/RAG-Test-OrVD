@@ -49,6 +49,33 @@ class RagOrchestrator:
             case_type=case_type,
         )
 
+
+    def _render_visual_answer(self, visual_evidence, max_tokens: int = 1024, temperature: float = 0.1) -> str:
+        if not visual_evidence:
+            return ''
+
+        normalized: list[dict] = []
+        for item in visual_evidence:
+            if hasattr(item, 'model_dump'):
+                normalized.append(item.model_dump())
+            elif isinstance(item, dict):
+                normalized.append(item)
+
+        if not normalized:
+            return ''
+
+        lines: list[str] = []
+        for idx, item in enumerate(normalized, start=1):
+            summary = str(item.get('summary') or '').strip()
+            ocr_text = str(item.get('ocr_text') or '').strip()
+            task_type = str(item.get('task_type') or 'text').strip()
+            if summary:
+                lines.append(f'[{idx}] ({task_type}) {summary}')
+            if ocr_text:
+                lines.append(ocr_text)
+
+        return '\n'.join(lines).strip()
+
     def answer(
         self,
         payload: AskRequest,
