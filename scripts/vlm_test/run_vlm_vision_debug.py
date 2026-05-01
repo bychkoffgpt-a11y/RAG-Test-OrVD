@@ -31,13 +31,15 @@ def build_prompt(prompt_mode: str, prompt_override: str | None) -> str:
     return JSON_STRICT_PROMPT
 
 
-def call_vision_debug(api_url: str, prompt: str, image_url: str, max_tokens: int, temperature: float, timeout: int = 120):
+def call_vision_debug(api_url: str, prompt: str, image_url: str, max_tokens: int, temperature: float, task_type: str | None = None, timeout: int = 120):
     payload = {
         "prompt": prompt,
         "attachments": [{"image_path": image_url}],
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
+    if task_type:
+        payload["task_type"] = task_type
     r = requests.post(f"{api_url.rstrip('/')}/vision/debug/recognize", json=payload, timeout=timeout)
     r.raise_for_status()
     return r.json()
@@ -77,7 +79,14 @@ def main():
             err = None
             resp = None
             try:
-                resp = call_vision_debug(args.api_url, prompt, c["url"], args.max_tokens, args.temperature)
+                resp = call_vision_debug(
+                    args.api_url,
+                    prompt,
+                    c["url"],
+                    args.max_tokens,
+                    args.temperature,
+                    c.get("task_type"),
+                )
                 text = extract_text(resp)
             except Exception as e:
                 text = ""

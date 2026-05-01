@@ -437,7 +437,14 @@ def vision_debug_recognize(payload: VisionDebugRequest):
         )
 
     normalized_attachments = _normalize_attachments_for_runtime(payload.attachments)
-    raw_visual = orch.vision.analyze_attachments(normalized_attachments, prompt)
+    try:
+        raw_visual = orch.vision.analyze_attachments(
+            normalized_attachments,
+            prompt,
+            forced_task_type=payload.task_type,
+        )
+    except TypeError:
+        raw_visual = orch.vision.analyze_attachments(normalized_attachments, prompt)
     visual_evidence = raw_visual if isinstance(raw_visual, list) else []
     answer = orch._render_visual_answer(
         visual_evidence,

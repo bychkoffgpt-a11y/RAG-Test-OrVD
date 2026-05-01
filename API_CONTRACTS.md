@@ -112,9 +112,12 @@ OpenAI-compatible endpoint.
     }
   ],
   "max_tokens": 1024,
-  "temperature": 0.1
+  "temperature": 0.1,
+  "task_type": "text"
 }
 ```
+
+- `task_type` (optional): принудительный тип задачи (`text|chart|sign`), если нужно отключить авто-детект по prompt.
 
 **Response:**
 ```json
