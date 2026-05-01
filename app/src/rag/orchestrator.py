@@ -75,10 +75,21 @@ class RagOrchestrator:
             if summary and not ocr_text and settings.vision_include_summary_in_answer:
                 lines.append(summary)
             if ocr_text:
-                if vlm_output_format == 'raw':
-                    lines.append(f'VLM raw output:\n{ocr_text}')
-                else:
+                if vlm_output_format != 'raw':
                     lines.append(ocr_text)
+            if vlm_output_format == 'raw':
+                visible_facts = item.get('visible_facts') or []
+                uncertain_facts = item.get('uncertain_facts') or []
+                not_visible = item.get('not_visible') or []
+                structured_chunks: list[str] = []
+                if isinstance(visible_facts, list) and visible_facts:
+                    structured_chunks.append('Факты: ' + '; '.join(str(v).strip() for v in visible_facts if str(v).strip()))
+                if isinstance(uncertain_facts, list) and uncertain_facts:
+                    structured_chunks.append('Неуверенные факты: ' + '; '.join(str(v).strip() for v in uncertain_facts if str(v).strip()))
+                if isinstance(not_visible, list) and not_visible:
+                    structured_chunks.append('Не видно: ' + '; '.join(str(v).strip() for v in not_visible if str(v).strip()))
+                if structured_chunks:
+                    lines.append(' | '.join(structured_chunks))
 
         return '\n'.join(lines).strip()
 

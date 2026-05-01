@@ -257,12 +257,19 @@ class VisionService:
         summary = self._build_summary(image_path, extracted_text, mode=mode)
         confidence = self._estimate_confidence(extracted_text)
         vlm_output_format: str | None = None
+        vlm_diagnostics: dict[str, str] | None = None
         if mode == 'ocr':
             ocr_text = extracted_text
         else:
             ocr_text = self._compose_structured_text(extracted_text, task_type=task_type)
             if extracted_text.strip():
-                vlm_output_format = 'json' if self._parse_vlm_json(extracted_text) is not None else 'raw'
+                parsed, parse_meta = self._parse_vlm_json_with_meta(extracted_text, strict_chart_json=(task_type == 'chart'))
+                vlm_output_format = 'json' if parsed is not None else 'raw'
+                if parse_meta.get('reason'):
+                    vlm_diagnostics = {
+                        'reason': parse_meta['reason'],
+                        'raw_output': self._sanitize_vlm_fallback_text(extracted_text),
+                    }
             if not ocr_text and vlm_output_format == 'raw':
                 ocr_text = extracted_text.strip()
             if not ocr_text.strip():
@@ -288,6 +295,7 @@ class VisionService:
             confidence=confidence,
             task_type=task_type,
             vlm_output_format=vlm_output_format,
+            vlm_diagnostics=vlm_diagnostics,
         )
 
     @staticmethod
@@ -714,7 +722,7 @@ class VisionService:
         return normalized.strip()
 
     def _compose_structured_text(self, raw_output: str, *, task_type: str = 'text') -> str:
-        parsed = self._parse_vlm_json(raw_output)
+        parsed, _ = self._parse_vlm_json_with_meta(raw_output, strict_chart_json=(task_type == 'chart'))
         if task_type == 'chart':
             chart_text = self._compose_chart_canonical_text(parsed=parsed, raw_output=raw_output)
             if chart_text:
@@ -898,28 +906,44 @@ class VisionService:
         except ValidationError:
             return None, 'json_schema_invalid'
 
-    def _parse_vlm_json(self, raw_output: str) -> VlmStructuredResponse | None:
+    def _parse_vlm_json_with_meta(self, raw_output: str, *, strict_chart_json: bool = False) -> tuple[VlmStructuredResponse | None, dict[str, str]]:
+        if strict_chart_json:
+            original = (raw_output or '').strip()
+            if original.startswith('```'):
+                logger.warning('vision_vlm_json_parse_failed', extra={'reason': 'json_block_not_found'})
+                return None, {'reason': 'json_block_not_found'}
         cleaned_output = self._strip_markdown_json_wrapper(raw_output)
         parsed, reason = self._validate_vlm_json_payload(cleaned_output)
         if parsed is not None:
-            return parsed
+            return parsed, {}
+
+        if strict_chart_json:
+            failure_reason = 'truncated_output' if ('{' in cleaned_output and '}' not in cleaned_output) else reason
+            logger.warning('vision_vlm_json_parse_failed', extra={'reason': failure_reason})
+            return None, {'reason': failure_reason}
 
         json_block = self._extract_json_code_block(cleaned_output)
         if json_block is not None:
             parsed, reason = self._validate_vlm_json_payload(json_block)
             if parsed is not None:
-                return parsed
+                return parsed, {}
 
         json_object = self._extract_first_balanced_json_object(cleaned_output)
         if json_object is not None:
             parsed, reason = self._validate_vlm_json_payload(json_object)
             if parsed is not None:
-                return parsed
+                return parsed, {}
 
         if json_block is None and json_object is None and reason == 'raw_not_json':
             reason = 'json_block_not_found'
+        if reason == 'raw_not_json' and '{' in cleaned_output and '}' not in cleaned_output:
+            reason = 'truncated_output'
         logger.warning('vision_vlm_json_parse_failed', extra={'reason': reason})
-        return None
+        return None, {'reason': reason}
+
+    def _parse_vlm_json(self, raw_output: str) -> VlmStructuredResponse | None:
+        parsed, _ = self._parse_vlm_json_with_meta(raw_output)
+        return parsed
 
     @staticmethod
     def _build_summary(image_path: str, extracted_text: str, *, mode: str) -> str:

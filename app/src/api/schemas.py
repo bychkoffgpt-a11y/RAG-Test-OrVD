@@ -17,6 +17,7 @@ class VisionEvidenceItem(BaseModel):
     confidence: float = 0.0
     task_type: str = 'text'
     vlm_output_format: Literal['json', 'raw'] | None = None
+    vlm_diagnostics: dict[str, str] | None = None
 
 
 class AskRequest(BaseModel):
