@@ -260,7 +260,7 @@ class VisionService:
         if mode == 'ocr':
             ocr_text = extracted_text
         else:
-            ocr_text = self._compose_structured_text(extracted_text)
+            ocr_text = self._compose_structured_text(extracted_text, task_type=task_type)
             if extracted_text.strip():
                 vlm_output_format = 'json' if self._parse_vlm_json(extracted_text) is not None else 'raw'
             if not ocr_text and vlm_output_format == 'raw':
@@ -713,8 +713,12 @@ class VisionService:
         normalized = re.sub(r'\s+', ' ', normalized)
         return normalized.strip()
 
-    def _compose_structured_text(self, raw_output: str) -> str:
+    def _compose_structured_text(self, raw_output: str, *, task_type: str = 'text') -> str:
         parsed = self._parse_vlm_json(raw_output)
+        if task_type == 'chart':
+            chart_text = self._compose_chart_canonical_text(parsed=parsed, raw_output=raw_output)
+            if chart_text:
+                return chart_text
         if parsed is None:
             return ''
 
@@ -723,6 +727,49 @@ class VisionService:
         if atomic_lines:
             return self._normalize_for_scoring(' | '.join(atomic_lines))
         return self._normalize_for_scoring(' | '.join(facts))
+
+    def _compose_chart_canonical_text(self, *, parsed: VlmStructuredResponse | None, raw_output: str) -> str:
+        facts = [*parsed.visible_facts, *parsed.uncertain_facts, *parsed.not_visible] if parsed else [raw_output]
+        blob = self._normalize_for_scoring(' | '.join(facts))
+        if not blob:
+            return ''
+
+        chart_type = 'не определен'
+        if any(k in blob for k in ('pie', 'круг', 'donut')):
+            chart_type = 'круговая'
+        elif any(k in blob for k in ('line', 'линей')):
+            chart_type = 'линейная'
+        elif any(k in blob for k in ('bar', 'column', 'столб', 'гистограмм')):
+            chart_type = 'столбчатая'
+
+        categories: list[str] = []
+        for pattern in (r'\bq[1-4]\b', r'\b(?:jan|feb|mar|apr|may)\b', r'\b(?:chrome|safari|firefox|edge)\b'):
+            for item in re.findall(pattern, blob, flags=re.IGNORECASE):
+                normalized = item.lower()
+                if normalized not in categories:
+                    categories.append(normalized)
+
+        max_match = re.search(r'(?:highest|max(?:imum)?|наибольш|максимум)[:\s-]*([a-zа-я0-9_.%-]+)', blob)
+        min_match = re.search(r'(?:lowest|min(?:imum)?|наименьш|минимум)[:\s-]*([a-zа-я0-9_.%-]+)', blob)
+        max_hint = max_match.group(1) if max_match else 'не определен'
+        min_hint = min_match.group(1) if min_match else 'не определен'
+
+        trend = 'не определен'
+        if any(k in blob for k in ('upward', 'growing', 'increase', 'рост', 'вырос', 'ascending')):
+            trend = 'рост'
+        elif any(k in blob for k in ('downward', 'decline', 'decrease', 'паден', 'снижен', 'descending')):
+            trend = 'снижение'
+        elif any(k in blob for k in ('stable', 'flat', 'без изменений', 'ровн')):
+            trend = 'стабильный'
+
+        lines = [
+            f'тип: {chart_type}',
+            f"категории: {', '.join(categories) if categories else 'не определены'}",
+            f'максимум: {max_hint}',
+            f'минимум: {min_hint}',
+            f'тренд: {trend}',
+        ]
+        return self._normalize_for_scoring(' | '.join(lines))
 
     @staticmethod
     def _collect_atomic_fact_lines(facts: list[str]) -> list[str]:
