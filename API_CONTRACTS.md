@@ -185,3 +185,9 @@ OpenAI-compatible endpoint.
 ## Политика совместимости
 - Обратная совместимость обязательна по умолчанию.
 - Изменения формата `AskRequest`/`AskResponse` и `/v1/chat/completions` — только с документированием в changelog и обновлением integration-тестов.
+
+
+## Vision summary behavior
+- `visual_evidence[].summary` remains a diagnostic field for OCR/VLM processing.
+- By default, `summary` is **not** appended to the final `answer` text.
+- Backward compatibility flag: `VISION_INCLUDE_SUMMARY_IN_ANSWER=false` (default).

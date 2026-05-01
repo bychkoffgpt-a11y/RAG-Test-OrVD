@@ -60,6 +60,7 @@ class Settings(BaseSettings):
         'Один и тот же факт запрещено повторять в разных массивах. '
         'Если confidence >= 0.75, массив not_visible обязан быть пустым.'
     )
+    vision_include_summary_in_answer: bool = False
     vision_model_prompt_ingest: str = (
         'Кратко опиши изображение для индексации документации. '
         'Укажи важные надписи, элементы интерфейса и возможные коды ошибок.'

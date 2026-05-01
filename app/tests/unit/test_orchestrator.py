@@ -201,7 +201,7 @@ def test_orchestrator_returns_response_when_trace_write_permission_error(monkeyp
     assert len(response.sources) == 1
 
 
-def test_orchestrator_render_visual_answer_handles_dicts_and_models():
+def test_orchestrator_render_visual_answer_contains_ocr_vlm_facts_without_service_tail():
     orch = RagOrchestrator()
 
     class _Item:
@@ -213,18 +213,26 @@ def test_orchestrator_render_visual_answer_handles_dicts_and_models():
                 'task_type': 'text',
             }
 
-    answer = orch._render_visual_answer([_Item(), {'summary': 'График продаж', 'task_type': 'chart'}])
+    answer = orch._render_visual_answer([
+        _Item(),
+        {'summary': 'Скриншот обработан. Метод: OCR. Файл: chart.png', 'ocr_text': 'Рост продаж 12%', 'task_type': 'chart'}
+    ])
 
-    assert 'Найден предупреждающий баннер' in answer
     assert 'ERROR 503' in answer
-    assert 'График продаж' in answer
+    assert 'Рост продаж 12%' in answer
+    assert 'Найден предупреждающий баннер' not in answer
+    assert 'Скриншот обработан' not in answer
+    assert 'Метод:' not in answer
+    assert 'Файл:' not in answer
 
 
-def test_orchestrator_render_visual_answer_includes_summary_when_ocr_empty():
+def test_orchestrator_render_visual_answer_can_include_summary_with_feature_flag(monkeypatch):
     orch = RagOrchestrator()
 
-    answer = orch._render_visual_answer(
-        [{'summary': 'Только summary без OCR', 'ocr_text': '', 'task_type': 'text'}]
-    )
+    monkeypatch.setattr('src.rag.orchestrator.settings.vision_include_summary_in_answer', True)
+
+    answer = orch._render_visual_answer([
+        {'summary': 'Только summary без OCR', 'ocr_text': '', 'task_type': 'text'}
+    ])
 
     assert 'Только summary без OCR' in answer
