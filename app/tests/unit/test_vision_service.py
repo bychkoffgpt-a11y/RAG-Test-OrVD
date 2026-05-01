@@ -313,6 +313,24 @@ def test_compose_structured_text_limits_chart_points(monkeypatch):
     assert 'c maybe 3' in out
 
 
+def test_compose_structured_text_normalizes_dict_payload_and_keeps_non_empty():
+    service = VisionService()
+    raw = (
+        '{"visible_facts":[{"code":"ERR-42","desc":"Timeout"},'
+        '{"empty":""},42,true],'
+        '"uncertain_facts":[{"hint":"retry later"}],'
+        '"not_visible":[null,""],'
+        '"confidence":0.6}'
+    )
+    out = service._compose_structured_text(raw)
+
+    assert out
+    assert 'code: err-42; desc: timeout' in out
+    assert '42' in out
+    assert 'true' in out
+    assert 'hint: retry later' in out
+
+
 def test_parse_vlm_json_rejects_duplicate_fact_across_sections():
     service = VisionService()
     parsed = service._parse_vlm_json(
