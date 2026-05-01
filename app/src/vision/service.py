@@ -107,7 +107,13 @@ class VisionService:
             return True
         return has_cuda
 
-    def analyze_attachments(self, attachments: Iterable[AttachmentItem], question: str) -> list[VisionEvidenceItem]:
+    def analyze_attachments(
+        self,
+        attachments: Iterable[AttachmentItem],
+        question: str,
+        *,
+        forced_task_type: str | None = None,
+    ) -> list[VisionEvidenceItem]:
         if not settings.vision_enabled:
             logger.info('vision_disabled')
             return []
@@ -149,6 +155,7 @@ class VisionService:
                     question=question,
                     mode=runtime_mode,
                     deadline=deadline,
+                    forced_task_type=forced_task_type,
                 )
             )
 
@@ -198,7 +205,14 @@ class VisionService:
         return chunks
 
     def _analyze_single_image(
-        self, image_path: str, *, source_url: str | None, question: str, mode: str, deadline: float | None
+        self,
+        image_path: str,
+        *,
+        source_url: str | None,
+        question: str,
+        mode: str,
+        deadline: float | None,
+        forced_task_type: str | None = None,
     ) -> VisionEvidenceItem:
         started = time.perf_counter()
         pixels_limit = int(settings.vision_runtime_max_image_pixels)
@@ -221,7 +235,7 @@ class VisionService:
                 confidence=0.0,
             )
 
-        task_type = self._detect_task_type(question=question, image_path=image_path)
+        task_type = (forced_task_type or "").strip() or self._detect_task_type(question=question, image_path=image_path)
         effective_image_path = image_path
         cleanup_path: str | None = None
         if mode == 'vlm' and task_type == 'chart':

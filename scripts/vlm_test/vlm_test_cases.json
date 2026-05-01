@@ -11,7 +11,8 @@
     "negative_facts": [
       "На изображении есть человек",
       "На изображении есть автомобиль"
-    ]
+    ],
+    "task_type": "text"
   },
   {
     "id": "img02_invoice_text",
@@ -25,7 +26,8 @@
     "negative_facts": [
       "Есть логотип компании",
       "Есть фотография товара"
-    ]
+    ],
+    "task_type": "text"
   },
   {
     "id": "img03_warning_label",
@@ -39,7 +41,8 @@
     "negative_facts": [
       "Есть таблица с числами",
       "Есть карта местности"
-    ]
+    ],
+    "task_type": "text"
   },
   {
     "id": "img04_multiline_mixed",
@@ -53,7 +56,8 @@
     "negative_facts": [
       "Есть штрихкод",
       "Есть портрет человека"
-    ]
+    ],
+    "task_type": "chart"
   },
   {
     "id": "img05_chart_sales_q",
@@ -67,7 +71,8 @@
     "negative_facts": [
       "Это круговая диаграмма",
       "На графике 12 категорий"
-    ]
+    ],
+    "task_type": "chart"
   },
   {
     "id": "img06_chart_compare_ab",
@@ -81,7 +86,8 @@
     "negative_facts": [
       "Есть линия тренда",
       "Есть 10 категорий"
-    ]
+    ],
+    "task_type": "chart"
   },
   {
     "id": "img07_line_trend",
@@ -95,7 +101,8 @@
     "negative_facts": [
       "Это диаграмма рассеяния",
       "Нет подписей месяцев"
-    ]
+    ],
+    "task_type": "chart"
   },
   {
     "id": "img08_pie_share",
@@ -109,7 +116,8 @@
     "negative_facts": [
       "Это горизонтальная гистограмма",
       "Есть 8 сегментов"
-    ]
+    ],
+    "task_type": "chart"
   },
   {
     "id": "img09_table_like_text",
@@ -123,7 +131,8 @@
     "negative_facts": [
       "Есть фотография пейзажа",
       "Есть QR-код"
-    ]
+    ],
+    "task_type": "text"
   },
   {
     "id": "img10_error_banner",
@@ -137,7 +146,8 @@
     "negative_facts": [
       "Это чек/инвойс",
       "На изображении есть график"
-    ]
+    ],
+    "task_type": "text"
   },
   {
     "id": "img11_route_sign",
@@ -151,7 +161,8 @@
     "negative_facts": [
       "Стрелка влево",
       "Есть таблица из 10 строк"
-    ]
+    ],
+    "task_type": "text"
   },
   {
     "id": "img12_schedule_note",
@@ -165,6 +176,7 @@
     "negative_facts": [
       "Есть карта метро",
       "Есть диаграмма с осями"
-    ]
+    ],
+    "task_type": "text"
   }
 ]
