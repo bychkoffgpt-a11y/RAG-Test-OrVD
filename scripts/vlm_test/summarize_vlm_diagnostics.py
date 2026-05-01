@@ -21,6 +21,8 @@ def main():
     ap.add_argument("--ask-summary", required=True)
     ap.add_argument("--chat-summary", required=True)
     ap.add_argument("--vision-summary")
+    ap.add_argument("--git-sha")
+    ap.add_argument("--git-branch")
     ap.add_argument("--out-markdown", default="comparison.md")
     args = ap.parse_args()
 
@@ -33,6 +35,11 @@ def main():
 
     lines = [
         "# VLM diagnostics comparison",
+        "",
+        "## Run metadata",
+        "",
+        f"- Git SHA: `{args.git_sha or 'n/a'}`",
+        f"- Git branch: `{args.git_branch or 'n/a'}`",
         "",
         "## Overall",
         "",
