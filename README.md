@@ -541,3 +541,9 @@ pytest -q --cov=src --cov-report=term-missing
 Правило для unit-тестов: тесты не должны зависеть от системных путей записи trace-карточек.
 Используйте `settings.rag_ui_trace_enabled=False`, временную writable директорию (`settings.rag_ui_trace_dir=tmp_path`)
 или подмену `orch.trace_writer` на no-op/stub writer.
+
+
+## Vision summary behavior
+- `visual_evidence[].summary` remains a diagnostic field for OCR/VLM processing.
+- By default, `summary` is **not** appended to the final `answer` text.
+- Backward compatibility flag: `VISION_INCLUDE_SUMMARY_IN_ANSWER=false` (default).
