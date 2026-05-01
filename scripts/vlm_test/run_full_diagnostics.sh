@@ -12,7 +12,29 @@ VISION_PROMPT="${VISION_PROMPT:-Проанализируй изображени�
 MAX_TOKENS="${MAX_TOKENS:-1024}"
 TEMPERATURE="${TEMPERATURE:-0.0}"
 
+if [[ -e "$OUT_DIR" ]]; then
+  echo "ERROR: output directory already exists: $OUT_DIR"
+  echo "Choose a different timestamp or set OUT_DIR to a unique path."
+  exit 1
+fi
+
 mkdir -p "$OUT_DIR"
+
+GIT_SHA="$(git rev-parse --short HEAD)"
+GIT_BRANCH="$(git branch --show-current)"
+RUN_META_PATH="${OUT_DIR}/run_meta.txt"
+
+{
+  echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "git_sha_short=${GIT_SHA}"
+  echo "git_branch=${GIT_BRANCH}"
+  echo "api_url=${API_URL}"
+  echo ""
+  echo "[VISION_ENV]"
+  env | sort | awk -F= '/^VISION_/ {print $1"="$2}'
+} > "$RUN_META_PATH"
+
+echo "Saved run metadata: ${RUN_META_PATH}"
 
 echo "[1/8] /ask run"
 python3 "${ROOT_DIR}/run_vlm_ask.py" \
@@ -80,6 +102,8 @@ python3 "${ROOT_DIR}/summarize_vlm_diagnostics.py" \
   --ask-summary "${OUT_DIR}/vlm_ask_score_v2_summary.json" \
   --chat-summary "${OUT_DIR}/vlm_chat_score_v2_summary.json" \
   --vision-summary "${OUT_DIR}/vlm_vision_debug_score_v2_summary.json" \
+  --git-sha "$GIT_SHA" \
+  --git-branch "$GIT_BRANCH" \
   --out-markdown "${OUT_DIR}/comparison.md"
 
 echo "\nDone. Output directory: ${OUT_DIR}"
