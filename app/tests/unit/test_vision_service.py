@@ -180,6 +180,34 @@ def test_parse_vlm_json_valid_payload():
     assert parsed.visible_facts == ['Error 500']
 
 
+
+
+def test_parse_vlm_json_markdown_json_block():
+    service = VisionService()
+    raw = '''```json
+{"visible_facts":["Error 500"],"uncertain_facts":[],"not_visible":[],"confidence":0.8}
+```'''
+    parsed = service._parse_vlm_json(raw)
+    assert parsed is not None
+    assert parsed.visible_facts == ['Error 500']
+
+
+def test_parse_vlm_json_text_with_trailing_json():
+    service = VisionService()
+    raw = '''Model answer summary:
+The UI shows an error.
+{"visible_facts":["Error 500"],"uncertain_facts":[],"not_visible":[],"confidence":0.8}'''
+    parsed = service._parse_vlm_json(raw)
+    assert parsed is not None
+    assert parsed.visible_facts == ['Error 500']
+
+
+def test_parse_vlm_json_invalid_schema_objects_list():
+    service = VisionService()
+    raw = '{"visible_facts":[{"k":"v"}],"uncertain_facts":[],"not_visible":[],"confidence":0.8}'
+    parsed = service._parse_vlm_json(raw)
+    assert parsed is None
+
 def test_run_vlm_repairs_invalid_json(monkeypatch, tmp_path):
     image = tmp_path / 'screen.png'
     image.write_bytes(b'fake')
@@ -311,24 +339,6 @@ def test_compose_structured_text_limits_chart_points(monkeypatch):
     out = service._compose_structured_text(raw)
     assert 'a:1' in out and 'b:2' in out
     assert 'c maybe 3' in out
-
-
-def test_compose_structured_text_normalizes_dict_payload_and_keeps_non_empty():
-    service = VisionService()
-    raw = (
-        '{"visible_facts":[{"code":"ERR-42","desc":"Timeout"},'
-        '{"empty":""},42,true],'
-        '"uncertain_facts":[{"hint":"retry later"}],'
-        '"not_visible":[null,""],'
-        '"confidence":0.6}'
-    )
-    out = service._compose_structured_text(raw)
-
-    assert out
-    assert 'code: err-42; desc: timeout' in out
-    assert '42' in out
-    assert 'true' in out
-    assert 'hint: retry later' in out
 
 
 def test_parse_vlm_json_rejects_duplicate_fact_across_sections():
