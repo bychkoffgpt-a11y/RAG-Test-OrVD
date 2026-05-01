@@ -461,3 +461,45 @@ def test_compose_structured_text_img12_like_contains_at_least_three_facts_in_ocr
     assert 'date:' in ocr_text
     assert 'owner: ops team' in ocr_text
     assert 'capacity: 12' in ocr_text
+
+
+def test_compose_structured_text_chart_json_img05_like():
+    service = VisionService()
+    raw = (
+        '{"visible_facts":["bar chart", "Q1 120", "Q2 140", "highest: q2", "lowest: q1", "upward trend"],'
+        '"uncertain_facts":[],"not_visible":[],"confidence":0.82}'
+    )
+
+    out = service._compose_structured_text(raw, task_type='chart')
+
+    assert 'тип: столбчатая' in out
+    assert ('категории: q1, q2' in out) or ('категории: q2, q1' in out)
+    assert 'максимум: q2' in out
+    assert 'минимум: q1' in out
+    assert 'тренд: рост' in out
+
+
+def test_compose_structured_text_chart_freeform_img06_like():
+    service = VisionService()
+    raw = 'Line graph jan-feb-mar, highest jan, lowest mar, overall decline.'
+
+    out = service._compose_structured_text(raw, task_type='chart')
+
+    assert 'тип: линейная' in out
+    assert 'категории: jan, feb, mar' in out
+    assert 'максимум: jan' in out
+    assert 'минимум: mar' in out
+    assert 'тренд: снижение' in out
+
+
+def test_compose_structured_text_chart_freeform_img08_like_browser_share():
+    service = VisionService()
+    raw = 'Pie chart for browser share: Chrome 62%, Safari 21%, Edge 9%. Highest chrome lowest edge stable.'
+
+    out = service._compose_structured_text(raw, task_type='chart')
+
+    assert 'тип: круговая' in out
+    assert 'категории: chrome, safari, edge' in out
+    assert 'максимум: chrome' in out
+    assert 'минимум: edge' in out
+    assert 'тренд: стабильный' in out
