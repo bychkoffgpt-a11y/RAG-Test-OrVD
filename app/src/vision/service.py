@@ -20,6 +20,7 @@ _VISION_MODES = {'ocr', 'vlm'}
 _VLM_SUPPORTED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}
 _VISION_TASK_TYPES = {'text', 'sign', 'chart'}
 _VLM_RAW_FALLBACK_MAX_CHARS = 2000
+_FACT_WHITELIST_KEYS = {'id', 'due', 'date', 'room', 'owner', 'status', 'capacity'}
 
 
 class VlmChartPoint(BaseModel):
@@ -716,12 +717,43 @@ class VisionService:
         parsed = self._parse_vlm_json(raw_output)
         if parsed is None:
             return ''
-        parts = [
-            ' '.join(parsed.visible_facts),
-            ' '.join(parsed.uncertain_facts),
-            ' '.join(parsed.not_visible),
-        ]
-        return self._normalize_for_scoring(' | '.join(p for p in parts if p))
+
+        facts = [*parsed.visible_facts, *parsed.uncertain_facts, *parsed.not_visible]
+        atomic_lines = self._collect_atomic_fact_lines(facts)
+        if atomic_lines:
+            return self._normalize_for_scoring(' | '.join(atomic_lines))
+        return self._normalize_for_scoring(' | '.join(facts))
+
+    @staticmethod
+    def _collect_atomic_fact_lines(facts: list[str]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for fact in facts:
+            if not isinstance(fact, str):
+                continue
+            segments = re.split(r'[\n;|]+', fact)
+            for segment in segments:
+                cleaned = re.sub(r'\s+', ' ', segment).strip(' \t\r\n-:')
+                if not cleaned:
+                    continue
+
+                key_match = re.match(r'^([a-zA-Zа-яА-Я0-9_\- ]{1,40})\s*[:=]\s*(.+)$', cleaned)
+                if key_match:
+                    key = key_match.group(1).strip().lower()
+                    value = key_match.group(2).strip()
+                    if value and (key in _FACT_WHITELIST_KEYS or value):
+                        cleaned = f'{key_match.group(1).strip()}: {value}'
+                    else:
+                        continue
+
+                normalized = VisionService._normalize_for_scoring(cleaned)
+                if not normalized or normalized in seen:
+                    continue
+                if len(normalized) < 2:
+                    continue
+                seen.add(normalized)
+                result.append(cleaned)
+        return result
 
     @staticmethod
     def _normalize_vlm_facts(values: object) -> list[str]:
