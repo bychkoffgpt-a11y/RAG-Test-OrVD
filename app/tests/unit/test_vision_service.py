@@ -306,6 +306,57 @@ def test_run_vlm_runtime_fallback_keeps_raw_text_when_json_invalid(monkeypatch, 
     assert result == 'second still invalid'
 
 
+def test_run_vlm_runtime_fallback_returns_marker_for_empty_model_output(monkeypatch, tmp_path):
+    image = tmp_path / 'screen.png'
+    image.write_bytes(b'fake')
+    service = VisionService()
+
+    class DummyProcessor:
+        def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=True):
+            return messages[0]['content'][1]['text']
+
+        def __call__(self, text, images, return_tensors='pt', padding=True):
+            return {'input_ids': np.array([[31, 32]])}
+
+        def batch_decode(self, generated, **kwargs):
+            return ['']
+
+    class DummyModel:
+        def generate(self, **kwargs):
+            return np.array([[31, 32, 333]])
+
+    class DummyTorch:
+        class _NoGrad:
+            def __enter__(self):
+                return None
+            def __exit__(self, exc_type, exc, tb):
+                return False
+        @staticmethod
+        def no_grad():
+            return DummyTorch._NoGrad()
+
+    monkeypatch.setattr('src.vision.service.Path.exists', lambda self: True)
+    monkeypatch.setattr(service, '_get_vlm_client', lambda: (DummyProcessor(), DummyModel(), 'cpu'))
+    monkeypatch.setitem(sys.modules, 'torch', DummyTorch())
+    monkeypatch.setitem(sys.modules, 'PIL', type('P', (), {'Image': type('I', (), {'open': staticmethod(lambda *_: type('Img', (), {'convert': lambda self, _: self})())})})())
+
+    result = service._run_vlm(str(image), question='q', deadline=None, allow_raw_fallback=True)
+    assert result == '[vlm_empty_output]'
+
+
+def test_analyze_single_image_vlm_uses_marker_when_model_output_empty(monkeypatch, tmp_path):
+    image = tmp_path / 'screen.png'
+    image.write_bytes(b'fake')
+    service = VisionService()
+    monkeypatch.setattr('src.vision.service.settings.vision_runtime_mode', 'vlm', raising=False)
+    monkeypatch.setattr(service, '_extract_image_text_or_caption', lambda *args, **kwargs: '')
+
+    evidence = service.analyze_attachments([AttachmentItem(image_path=str(image))], question='Что на скрине?')
+
+    assert len(evidence) == 1
+    assert evidence[0].ocr_text == '[vlm_empty_output]'
+
+
 def test_decode_generated_tail_removes_prompt_tokens_and_dialog_markup():
     class DummyProcessor:
         def batch_decode(self, generated, **kwargs):
