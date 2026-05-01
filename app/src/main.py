@@ -228,6 +228,12 @@ def _looks_like_chart_case(question: str, messages: list[dict]) -> bool:
     return any(k in signal for k in ('chart', 'graph', 'plot', 'diagram', 'legend', 'axis', 'диаграм', 'график', 'ось'))
 
 
+def _apply_visual_answer_fallback(answer_text: str, visual_evidence: list[dict]) -> str:
+    if answer_text.strip() or not visual_evidence:
+        return answer_text
+    return RagOrchestrator()._build_visual_answer_fallback(visual_evidence)
+
+
 @app.middleware('http')
 async def metrics_middleware(request: Request, call_next):
     start = time.perf_counter()
@@ -352,7 +358,7 @@ def openai_compat(payload: dict, request: Request):
     model = payload.get('model', 'local-rag-model')
     is_stream = payload.get('stream') is True
 
-    rendered_answer = answer.answer
+    rendered_answer = _apply_visual_answer_fallback(answer.answer, [item.model_dump() for item in answer.visual_evidence])
     if not is_vision_only:
         rendered_answer = append_grounding_markdown(rendered_answer, answer.sources, base_url=str(request.base_url))
         rendered_answer = append_sources_markdown(rendered_answer, answer.sources, base_url=str(request.base_url))
@@ -459,6 +465,7 @@ def vision_debug_recognize(payload: VisionDebugRequest):
         max_tokens=payload.max_tokens,
         temperature=payload.temperature,
     )
+    answer = _apply_visual_answer_fallback(answer, visual_evidence)
     return VisionDebugResponse(answer=answer, visual_evidence=visual_evidence, chart_mode=chart_mode)
 
 
