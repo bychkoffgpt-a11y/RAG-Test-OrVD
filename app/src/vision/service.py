@@ -19,6 +19,7 @@ _OCR_UNSUPPORTED_IMAGE_EXTENSIONS = {'.jb2', '.jbig2'}
 _VISION_MODES = {'ocr', 'vlm'}
 _VLM_SUPPORTED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}
 _VISION_TASK_TYPES = {'text', 'sign', 'chart'}
+_VLM_RAW_FALLBACK_MAX_CHARS = 2000
 
 
 class VlmChartPoint(BaseModel):
@@ -263,6 +264,8 @@ class VisionService:
                 vlm_output_format = 'json' if self._parse_vlm_json(extracted_text) is not None else 'raw'
             if not ocr_text and vlm_output_format == 'raw':
                 ocr_text = extracted_text.strip()
+            if not ocr_text.strip():
+                ocr_text = self._sanitize_vlm_fallback_text(extracted_text)
 
         logger.info(
             'vision_image_processed',
@@ -659,7 +662,7 @@ class VisionService:
             if self._parse_vlm_json(repaired) is None:
                 logger.warning('vision_vlm_json_invalid_after_retry', extra={'image_path': image_path})
                 if allow_raw_fallback:
-                    fallback = (repaired or result).strip()
+                    fallback = self._sanitize_vlm_fallback_text(repaired or result)
                     logger.info(
                         'vision_vlm_raw_fallback_used',
                         extra={'image_path': image_path, 'fallback_length': len(fallback)},
@@ -679,6 +682,15 @@ class VisionService:
             clean_up_tokenization_spaces=True,
         )
         return (decoded[0] if decoded else '').strip()
+
+    @staticmethod
+    def _sanitize_vlm_fallback_text(raw_output: str) -> str:
+        fallback = (raw_output or '').strip()
+        if not fallback:
+            return '[vlm_empty_output]'
+        if len(fallback) > _VLM_RAW_FALLBACK_MAX_CHARS:
+            return fallback[:_VLM_RAW_FALLBACK_MAX_CHARS]
+        return fallback
 
     @staticmethod
     def _repair_prompt(raw_output: str) -> str:
