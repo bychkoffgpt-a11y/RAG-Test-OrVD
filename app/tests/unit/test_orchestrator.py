@@ -218,3 +218,13 @@ def test_orchestrator_render_visual_answer_handles_dicts_and_models():
     assert 'Найден предупреждающий баннер' in answer
     assert 'ERROR 503' in answer
     assert 'График продаж' in answer
+
+
+def test_orchestrator_render_visual_answer_includes_summary_when_ocr_empty():
+    orch = RagOrchestrator()
+
+    answer = orch._render_visual_answer(
+        [{'summary': 'Только summary без OCR', 'ocr_text': '', 'task_type': 'text'}]
+    )
+
+    assert 'Только summary без OCR' in answer

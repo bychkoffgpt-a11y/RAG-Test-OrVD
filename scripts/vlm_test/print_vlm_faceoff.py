@@ -147,6 +147,23 @@ def render_case(row: Dict[str, Any], answer_limit: int) -> None:
     print("-" * 120)
     print("ACTUAL ANSWER:")
     print(shorten(answer, answer_limit) or "(empty)")
+    if scored_from == "answer_text" and not (answer or "").strip():
+        raw_response = row.get("raw_response")
+        visual_evidence = raw_response.get("visual_evidence") if isinstance(raw_response, dict) else None
+        if isinstance(visual_evidence, list) and visual_evidence:
+            print("-" * 120)
+            print("RAW VISUAL EVIDENCE DUMP:")
+            for i, ev in enumerate(visual_evidence, 1):
+                if not isinstance(ev, dict):
+                    print(f"[{i}] <non-dict>")
+                    continue
+                ocr_text = shorten(str(ev.get("ocr_text") or ""), 160)
+                summary = shorten(str(ev.get("summary") or ""), 160)
+                task_type = str(ev.get("task_type") or "")
+                print(
+                    f"[{i}] task_type={task_type or '-'} summary={summary or '-'} "
+                    f"ocr_text={ocr_text or '-'}"
+                )
 
 
 def main() -> None:
