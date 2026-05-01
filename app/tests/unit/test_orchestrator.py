@@ -259,3 +259,18 @@ def test_orchestrator_render_visual_answer_can_include_summary_with_feature_flag
     ])
 
     assert 'Только summary без OCR' in answer
+
+
+def test_orchestrator_render_visual_answer_hides_raw_vlm_json_tail():
+    orch = RagOrchestrator()
+    answer = orch._render_visual_answer([
+        {
+            'ocr_text': '{"visible_facts":["A"],"uncertain_facts":[]',
+            'task_type': 'chart',
+            'vlm_output_format': 'raw',
+            'visible_facts': ['A'],
+        }
+    ])
+
+    assert '{"visible_facts"' not in answer
+    assert 'Факты: A' in answer

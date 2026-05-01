@@ -202,6 +202,28 @@ The UI shows an error.
     assert parsed.visible_facts == ['Error 500']
 
 
+def test_parse_vlm_json_truncated_json_reason():
+    service = VisionService()
+    parsed, meta = service._parse_vlm_json_with_meta('{"visible_facts":["Error 500"]', strict_chart_json=True)
+    assert parsed is None
+    assert meta.get('reason') == 'truncated_output'
+
+
+def test_parse_vlm_json_markdown_fenced_is_rejected_in_strict_chart_mode():
+    service = VisionService()
+    raw = '```json\n{"visible_facts":["Error 500"],"uncertain_facts":[],"not_visible":[],"confidence":0.8}\n```'
+    parsed, meta = service._parse_vlm_json_with_meta(raw, strict_chart_json=True)
+    assert parsed is None
+    assert meta.get('reason') == 'json_block_not_found'
+
+
+def test_parse_vlm_json_mixed_text_and_json_reason_json_block_not_found():
+    service = VisionService()
+    parsed, meta = service._parse_vlm_json_with_meta('Model: hello world without json')
+    assert parsed is None
+    assert meta.get('reason') == 'json_block_not_found'
+
+
 def test_parse_vlm_json_objects_list_normalized_by_priority_keys():
     service = VisionService()
     raw = '{"visible_facts":[{"fact":"Error 500"},{"text":"Button disabled"}],"uncertain_facts":[],"not_visible":[],"confidence":0.8}'
