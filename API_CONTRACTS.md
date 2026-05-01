@@ -21,6 +21,9 @@
 }
 ```
 
+Дополнительное мультимодальное поведение:
+- если итоговый `answer` пустой, но `visual_evidence` содержит данные, возвращается непустой fallback, собранный из `ocr_text` и структурированных полей (`visible_facts`, `task_type`, `categories`).
+
 Ограничения:
 - `question`: обязательное поле, `min_length=3`.
 - `scope`: `all | csv_ans_docs | internal_regulations`.
@@ -53,6 +56,9 @@
   ]
 }
 ```
+
+Fallback-поведение:
+- если итоговый `answer` пустой, но `visual_evidence` не пустой, endpoint формирует текстовый fallback из `ocr_text` и структурированных полей (`visible_facts`, `task_type`, `categories`).
 
 Типовые ошибки:
 - `504` — таймаут запроса к LLM backend.

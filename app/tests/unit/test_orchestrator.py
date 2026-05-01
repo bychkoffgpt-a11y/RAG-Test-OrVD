@@ -97,6 +97,11 @@ class _LlmWithFixedAnswer:
         return 'Тестовый ответ'
 
 
+class _LlmWithEmptyAnswer:
+    def generate(self, prompt, max_tokens=512, temperature=0.1, trace=None):
+        return '   '
+
+
 class _VisionWithEvidence:
     def analyze_attachments(self, attachments, question):
         if not attachments:
@@ -140,6 +145,24 @@ def test_orchestrator_uses_visual_evidence_from_attachments():
 
     assert response.visual_evidence
     assert response.visual_evidence[0].image_path == '/tmp/error.png'
+
+
+def test_orchestrator_applies_visual_fallback_when_llm_answer_empty():
+    orch = RagOrchestrator()
+    orch.retriever = _RetrieverWithOneContext()
+    orch.llm = _LlmWithEmptyAnswer()
+    orch.vision = _VisionWithEvidence()
+
+    payload = AskRequest(
+        question='Проверь ошибку',
+        top_k=8,
+        scope='all',
+        attachments=[AttachmentItem(image_path='/tmp/error.png')],
+    )
+    response = orch.answer(payload)
+
+    assert response.answer.strip()
+    assert 'Ошибка 500' in response.answer
 
 
 def test_orchestrator_writes_trace_card():

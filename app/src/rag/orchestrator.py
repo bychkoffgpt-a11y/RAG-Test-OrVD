@@ -82,6 +82,36 @@ class RagOrchestrator:
 
         return '\n'.join(lines).strip()
 
+    def _build_visual_answer_fallback(self, visual_evidence) -> str:
+        if not visual_evidence:
+            return ''
+        lines: list[str] = []
+        for idx, item in enumerate(visual_evidence, start=1):
+            if hasattr(item, 'model_dump'):
+                item = item.model_dump()
+            if not isinstance(item, dict):
+                continue
+            ocr_text = str(item.get('ocr_text') or '').strip()
+            task_type = str(item.get('task_type') or '').strip()
+            categories = item.get('categories')
+            visible_facts = item.get('visible_facts')
+            chunks: list[str] = []
+            if ocr_text:
+                chunks.append(ocr_text)
+            if isinstance(visible_facts, list):
+                facts = [str(v).strip() for v in visible_facts if str(v).strip()]
+                if facts:
+                    chunks.append('Факты: ' + '; '.join(facts))
+            if task_type:
+                chunks.append(f'Тип задачи: {task_type}')
+            if isinstance(categories, list):
+                cats = [str(v).strip() for v in categories if str(v).strip()]
+                if cats:
+                    chunks.append('Категории: ' + ', '.join(cats))
+            if chunks:
+                lines.append(f'[{idx}] ' + ' | '.join(chunks))
+        return '\n'.join(lines).strip()
+
     def answer(
         self,
         payload: AskRequest,
@@ -205,6 +235,8 @@ class RagOrchestrator:
         _trace('vlm_infer_start')
         llm_trace: dict = {}
         answer = self.llm.generate(prompt, max_tokens=max_tokens, temperature=temperature, trace=llm_trace)
+        if not answer.strip() and visual_evidence:
+            answer = self._build_visual_answer_fallback(visual_evidence)
         llm_duration = time.perf_counter() - llm_started
         _trace(
             'vlm_infer_end',
@@ -255,6 +287,11 @@ class RagOrchestrator:
                 'duration_sec': round(total_duration, 3),
             },
         )
+        if payload.attachments and not answer.strip():
+            logger.warning(
+                'vision_empty_answer_fallback_applied',
+                extra={'endpoint': endpoint, 'attachments': len(payload.attachments), 'visual_evidence': len(visual_evidence)},
+            )
         logger.info(
             'rag_pipeline_profile',
             extra={

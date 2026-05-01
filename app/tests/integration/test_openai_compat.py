@@ -173,6 +173,47 @@ def test_vision_debug_recognize_chart_mode(monkeypatch):
     assert data['chart_mode'] is True
 
 
+def test_vision_debug_recognize_applies_fallback_for_empty_render(monkeypatch):
+    class EmptyRenderOrchestrator(DummyOrchestrator):
+        def _render_visual_answer(self, visual_evidence, max_tokens: int, temperature: float):
+            return ' '
+
+    dummy = EmptyRenderOrchestrator()
+    dummy.vision = DummyVision()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    client = TestClient(app)
+
+    response = client.post(
+        '/vision/debug/recognize',
+        json={'prompt': 'Опиши screenshot', 'attachments': [{'image_path': '/tmp/chart.png'}]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data['answer'].strip()
+    assert 'HTTP 500' in data['answer']
+
+
+def test_chat_completions_applies_visual_fallback_for_empty_answer(monkeypatch):
+    class EmptyAnswerOrchestrator(DummyOrchestrator):
+        def answer(self, ask_payload, max_tokens: int, temperature: float):
+            self.last_payload = ask_payload
+            return DummyAnswer(answer='  ')
+
+    dummy = EmptyAnswerOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    client = TestClient(app)
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [{'role': 'user', 'content': [{'type': 'image_url', 'image_url': {'url': 'file:///tmp/screen-only.png'}}]}],
+        'stream': False,
+    }
+    response = client.post('/v1/chat/completions', json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data['choices'][0]['message']['content'].strip()
+    assert 'HTTP 500' in data['choices'][0]['message']['content']
+
+
 def test_chat_completions_stream_returns_sse_chunks(monkeypatch):
     monkeypatch.setattr(main_module, 'orch', DummyOrchestrator())
     client = TestClient(app)

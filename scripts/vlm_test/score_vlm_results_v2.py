@@ -283,6 +283,7 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
     total_neg_partial_sum = 0.0
 
     errors = 0
+    empty_answer_cases = 0
 
     for r in rows:
         cid = r.get("id", "unknown")
@@ -290,6 +291,8 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         grp = r.get("task_type_routed") or r.get("task_type") or classify_group(cid, url)
 
         ans, scored_from = extract_scoring_text(r)
+        if not str(ans or "").strip():
+            empty_answer_cases += 1
         err = r.get("error")
         if err:
             errors += 1
@@ -359,11 +362,14 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         # group accumulators
         g = by_group.setdefault(grp, {
             "cases": 0,
+            "empty_answer_cases": 0,
             "gold_total": 0, "gold_hard": 0, "gold_partial_sum": 0.0,
             "neg_total": 0, "neg_hard": 0, "neg_partial_sum": 0.0,
             "lat": []
         })
         g["cases"] += 1
+        if not str(ans or "").strip():
+            g["empty_answer_cases"] += 1
         g["gold_total"] += len(golden)
         g["gold_hard"] += gold_hard
         g["gold_partial_sum"] += sum(gold_scores)
@@ -376,6 +382,7 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
     summary = {
         "cases_total": len(rows),
         "cases_with_error": errors,
+        "empty_answer_cases": empty_answer_cases,
         "golden_total": total_gold,
         "golden_hard_hits": total_gold_hard_hits,
         "golden_hard_recall": round((total_gold_hard_hits / total_gold) if total_gold else 0.0, 4),
@@ -393,6 +400,7 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
     for grp, g in by_group.items():
         groups[grp] = {
             "cases": g["cases"],
+            "empty_answer_cases": g["empty_answer_cases"],
             "golden_hard_recall": round((g["gold_hard"] / g["gold_total"]) if g["gold_total"] else 0.0, 4),
             "golden_partial_recall": round((g["gold_partial_sum"] / g["gold_total"]) if g["gold_total"] else 0.0, 4),
             "hallucination_hard_rate": round((g["neg_hard"] / g["neg_total"]) if g["neg_total"] else 0.0, 4),
