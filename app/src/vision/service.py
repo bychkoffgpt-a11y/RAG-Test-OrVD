@@ -722,15 +722,75 @@ class VisionService:
                 normalized.append(rendered)
         return normalized
 
-    def _parse_vlm_json(self, raw_output: str) -> VlmStructuredResponse | None:
-        try:
-            data = json.loads(raw_output)
-            if isinstance(data, dict):
-                for field in ('visible_facts', 'uncertain_facts', 'not_visible'):
-                    data[field] = self._normalize_vlm_facts(data.get(field))
-            return VlmStructuredResponse.model_validate(data)
-        except (json.JSONDecodeError, ValidationError, TypeError):
+    @staticmethod
+    def _extract_json_code_block(raw_output: str) -> str | None:
+        match = re.search(r"```\s*json\s*(.*?)```", raw_output, flags=re.IGNORECASE | re.DOTALL)
+        if not match:
             return None
+        content = match.group(1).strip()
+        return content or None
+
+    @staticmethod
+    def _extract_first_balanced_json_object(raw_output: str) -> str | None:
+        start = raw_output.find('{')
+        while start != -1:
+            depth = 0
+            in_string = False
+            escaped = False
+            for idx in range(start, len(raw_output)):
+                char = raw_output[idx]
+                if in_string:
+                    if escaped:
+                        escaped = False
+                    elif char == '\\':
+                        escaped = True
+                    elif char == '"':
+                        in_string = False
+                    continue
+                if char == '"':
+                    in_string = True
+                    continue
+                if char == '{':
+                    depth += 1
+                elif char == '}':
+                    depth -= 1
+                    if depth == 0:
+                        return raw_output[start: idx + 1]
+            start = raw_output.find('{', start + 1)
+        return None
+
+    def _validate_vlm_json_payload(self, payload: str) -> tuple[VlmStructuredResponse | None, str]:
+        try:
+            data = json.loads(payload)
+        except (json.JSONDecodeError, TypeError):
+            return None, 'raw_not_json'
+
+        try:
+            return VlmStructuredResponse.model_validate(data), ''
+        except ValidationError:
+            return None, 'json_schema_invalid'
+
+    def _parse_vlm_json(self, raw_output: str) -> VlmStructuredResponse | None:
+        parsed, reason = self._validate_vlm_json_payload(raw_output)
+        if parsed is not None:
+            return parsed
+
+        json_block = self._extract_json_code_block(raw_output)
+        if json_block is not None:
+            parsed, reason = self._validate_vlm_json_payload(json_block)
+            if parsed is not None:
+                return parsed
+
+        json_object = self._extract_first_balanced_json_object(raw_output)
+        if json_object is not None:
+            parsed, reason = self._validate_vlm_json_payload(json_object)
+            if parsed is not None:
+                return parsed
+
+        if json_block is None and json_object is None and reason == 'raw_not_json':
+            reason = 'json_block_not_found'
+        logger.warning('vision_vlm_json_parse_failed', extra={'reason': reason})
+        return None
 
     @staticmethod
     def _build_summary(image_path: str, extracted_text: str, *, mode: str) -> str:
