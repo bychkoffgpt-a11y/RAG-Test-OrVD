@@ -697,9 +697,37 @@ class VisionService:
         ]
         return self._normalize_for_scoring(' | '.join(p for p in parts if p))
 
+    @staticmethod
+    def _normalize_vlm_facts(values: object) -> list[str]:
+        if not isinstance(values, list):
+            return []
+
+        normalized: list[str] = []
+        for item in values:
+            rendered = ''
+            if isinstance(item, dict):
+                pairs: list[str] = []
+                for key, value in item.items():
+                    key_str = str(key).strip()
+                    value_str = str(value).strip() if value is not None else ''
+                    if key_str and value_str:
+                        pairs.append(f'{key_str}: {value_str}')
+                rendered = '; '.join(pairs)
+            elif isinstance(item, (int, float, bool)):
+                rendered = str(item).strip()
+            elif isinstance(item, str):
+                rendered = item.strip()
+
+            if rendered:
+                normalized.append(rendered)
+        return normalized
+
     def _parse_vlm_json(self, raw_output: str) -> VlmStructuredResponse | None:
         try:
             data = json.loads(raw_output)
+            if isinstance(data, dict):
+                for field in ('visible_facts', 'uncertain_facts', 'not_visible'):
+                    data[field] = self._normalize_vlm_facts(data.get(field))
             return VlmStructuredResponse.model_validate(data)
         except (json.JSONDecodeError, ValidationError, TypeError):
             return None
