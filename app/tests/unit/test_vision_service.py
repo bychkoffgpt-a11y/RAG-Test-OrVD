@@ -202,11 +202,22 @@ The UI shows an error.
     assert parsed.visible_facts == ['Error 500']
 
 
-def test_parse_vlm_json_invalid_schema_objects_list():
+def test_parse_vlm_json_objects_list_normalized_by_priority_keys():
     service = VisionService()
-    raw = '{"visible_facts":[{"k":"v"}],"uncertain_facts":[],"not_visible":[],"confidence":0.8}'
+    raw = '{"visible_facts":[{"fact":"Error 500"},{"text":"Button disabled"}],"uncertain_facts":[],"not_visible":[],"confidence":0.8}'
     parsed = service._parse_vlm_json(raw)
-    assert parsed is None
+    assert parsed is not None
+    assert parsed.visible_facts == ['Error 500', 'Button disabled']
+
+
+def test_compose_structured_text_with_visible_facts_objects_is_readable():
+    service = VisionService()
+    raw = '{"visible_facts":[{"fact":"Error 500"},{"text":"Retry button disabled"}],"uncertain_facts":[],"not_visible":[],"confidence":0.8}'
+    ocr_text = service._compose_structured_text(raw)
+    assert ocr_text
+    assert 'error 500' in ocr_text
+    assert 'retry button disabled' in ocr_text
+    assert '|' in ocr_text
 
 def test_run_vlm_repairs_invalid_json(monkeypatch, tmp_path):
     image = tmp_path / 'screen.png'
@@ -388,7 +399,7 @@ def test_compose_structured_text_limits_chart_points(monkeypatch):
     service = VisionService()
     raw = '{"visible_facts":["A:1","B:2"],"uncertain_facts":["C maybe 3"],"not_visible":[],"confidence":0.9}'
     out = service._compose_structured_text(raw)
-    assert 'a:1' in out and 'b:2' in out
+    assert 'a: 1' in out and 'b: 2' in out
     assert 'c maybe 3' in out
 
 
@@ -406,3 +417,89 @@ def test_parse_vlm_json_rejects_not_visible_with_high_confidence():
         '{"visible_facts":["Error 500"],"uncertain_facts":[],"not_visible":["нечитаемо"],"confidence":0.9}'
     )
     assert parsed is None
+
+
+def test_compose_structured_text_text_sign_collects_multiple_atomic_facts_img02_like():
+    service = VisionService()
+    raw = (
+        '{"visible_facts":["ID: A-42; Due: 2026-04-22 | Room: 304"],'
+        '"uncertain_facts":["Owner=Alex\\nStatus: pending"],'
+        '"not_visible":["Capacity: 18"],"confidence":0.74}'
+    )
+
+    out = service._compose_structured_text(raw)
+
+    for expected in ('id: a-42', 'due:', 'room: 304', 'owner: alex', 'status: pending', 'capacity: 18'):
+        assert expected in out
+
+
+def test_compose_structured_text_keeps_whitelist_keys_with_short_values_img04_like():
+    service = VisionService()
+    raw = (
+        '{"visible_facts":["ID: 7\\nRoom: A1\\nStatus: ok"],'
+        '"uncertain_facts":[],"not_visible":[],"confidence":0.7}'
+    )
+
+    out = service._compose_structured_text(raw)
+
+    assert 'id: 7' in out
+    assert 'room: a1' in out
+    assert 'status: ok' in out
+
+
+def test_compose_structured_text_img12_like_contains_at_least_three_facts_in_ocr_text():
+    service = VisionService()
+    raw = (
+        '{"visible_facts":["Date: 2026-03-01; Owner: Ops Team; Capacity: 12"],'
+        '"uncertain_facts":["Due: 2026-03-10"],"not_visible":[],"confidence":0.68}'
+    )
+
+    ocr_text = service._compose_structured_text(raw)
+    facts = [part.strip() for part in ocr_text.split('|') if part.strip()]
+
+    assert len(facts) >= 3
+    assert 'date:' in ocr_text
+    assert 'owner: ops team' in ocr_text
+    assert 'capacity: 12' in ocr_text
+
+
+def test_compose_structured_text_chart_json_img05_like():
+    service = VisionService()
+    raw = (
+        '{"visible_facts":["bar chart", "Q1 120", "Q2 140", "highest: q2", "lowest: q1", "upward trend"],'
+        '"uncertain_facts":[],"not_visible":[],"confidence":0.82}'
+    )
+
+    out = service._compose_structured_text(raw, task_type='chart')
+
+    assert 'тип: столбчатая' in out
+    assert ('категории: q1, q2' in out) or ('категории: q2, q1' in out)
+    assert 'максимум: q2' in out
+    assert 'минимум: q1' in out
+    assert 'тренд: рост' in out
+
+
+def test_compose_structured_text_chart_freeform_img06_like():
+    service = VisionService()
+    raw = 'Line graph jan-feb-mar, highest jan, lowest mar, overall decline.'
+
+    out = service._compose_structured_text(raw, task_type='chart')
+
+    assert 'тип: линейная' in out
+    assert 'категории: jan, feb, mar' in out
+    assert 'максимум: jan' in out
+    assert 'минимум: mar' in out
+    assert 'тренд: снижение' in out
+
+
+def test_compose_structured_text_chart_freeform_img08_like_browser_share():
+    service = VisionService()
+    raw = 'Pie chart for browser share: Chrome 62%, Safari 21%, Edge 9%. Highest chrome lowest edge stable.'
+
+    out = service._compose_structured_text(raw, task_type='chart')
+
+    assert 'тип: круговая' in out
+    assert 'категории: chrome, safari, edge' in out
+    assert 'максимум: chrome' in out
+    assert 'минимум: edge' in out
+    assert 'тренд: стабильный' in out

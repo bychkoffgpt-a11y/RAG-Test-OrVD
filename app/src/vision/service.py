@@ -20,6 +20,7 @@ _VISION_MODES = {'ocr', 'vlm'}
 _VLM_SUPPORTED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}
 _VISION_TASK_TYPES = {'text', 'sign', 'chart'}
 _VLM_RAW_FALLBACK_MAX_CHARS = 2000
+_FACT_WHITELIST_KEYS = {'id', 'due', 'date', 'room', 'owner', 'status', 'capacity'}
 
 
 class VlmChartPoint(BaseModel):
@@ -259,7 +260,7 @@ class VisionService:
         if mode == 'ocr':
             ocr_text = extracted_text
         else:
-            ocr_text = self._compose_structured_text(extracted_text)
+            ocr_text = self._compose_structured_text(extracted_text, task_type=task_type)
             if extracted_text.strip():
                 vlm_output_format = 'json' if self._parse_vlm_json(extracted_text) is not None else 'raw'
             if not ocr_text and vlm_output_format == 'raw':
@@ -712,16 +713,118 @@ class VisionService:
         normalized = re.sub(r'\s+', ' ', normalized)
         return normalized.strip()
 
-    def _compose_structured_text(self, raw_output: str) -> str:
+    def _compose_structured_text(self, raw_output: str, *, task_type: str = 'text') -> str:
         parsed = self._parse_vlm_json(raw_output)
+        if task_type == 'chart':
+            chart_text = self._compose_chart_canonical_text(parsed=parsed, raw_output=raw_output)
+            if chart_text:
+                return chart_text
         if parsed is None:
             return ''
-        parts = [
-            ' '.join(parsed.visible_facts),
-            ' '.join(parsed.uncertain_facts),
-            ' '.join(parsed.not_visible),
+
+        facts = [*parsed.visible_facts, *parsed.uncertain_facts, *parsed.not_visible]
+        atomic_lines = self._collect_atomic_fact_lines(facts)
+        if atomic_lines:
+            return self._normalize_for_scoring(' | '.join(atomic_lines))
+        return self._normalize_for_scoring(' | '.join(facts))
+
+    def _compose_chart_canonical_text(self, *, parsed: VlmStructuredResponse | None, raw_output: str) -> str:
+        facts = [*parsed.visible_facts, *parsed.uncertain_facts, *parsed.not_visible] if parsed else [raw_output]
+        blob = self._normalize_for_scoring(' | '.join(facts))
+        if not blob:
+            return ''
+
+        chart_type = 'не определен'
+        if any(k in blob for k in ('pie', 'круг', 'donut')):
+            chart_type = 'круговая'
+        elif any(k in blob for k in ('line', 'линей')):
+            chart_type = 'линейная'
+        elif any(k in blob for k in ('bar', 'column', 'столб', 'гистограмм')):
+            chart_type = 'столбчатая'
+
+        categories: list[str] = []
+        for pattern in (r'\bq[1-4]\b', r'\b(?:jan|feb|mar|apr|may)\b', r'\b(?:chrome|safari|firefox|edge)\b'):
+            for item in re.findall(pattern, blob, flags=re.IGNORECASE):
+                normalized = item.lower()
+                if normalized not in categories:
+                    categories.append(normalized)
+
+        max_match = re.search(r'(?:highest|max(?:imum)?|наибольш|максимум)[:\s-]*([a-zа-я0-9_.%-]+)', blob)
+        min_match = re.search(r'(?:lowest|min(?:imum)?|наименьш|минимум)[:\s-]*([a-zа-я0-9_.%-]+)', blob)
+        max_hint = max_match.group(1) if max_match else 'не определен'
+        min_hint = min_match.group(1) if min_match else 'не определен'
+
+        trend = 'не определен'
+        if any(k in blob for k in ('upward', 'growing', 'increase', 'рост', 'вырос', 'ascending')):
+            trend = 'рост'
+        elif any(k in blob for k in ('downward', 'decline', 'decrease', 'паден', 'снижен', 'descending')):
+            trend = 'снижение'
+        elif any(k in blob for k in ('stable', 'flat', 'без изменений', 'ровн')):
+            trend = 'стабильный'
+
+        lines = [
+            f'тип: {chart_type}',
+            f"категории: {', '.join(categories) if categories else 'не определены'}",
+            f'максимум: {max_hint}',
+            f'минимум: {min_hint}',
+            f'тренд: {trend}',
         ]
-        return self._normalize_for_scoring(' | '.join(p for p in parts if p))
+        return self._normalize_for_scoring(' | '.join(lines))
+
+    @staticmethod
+    def _collect_atomic_fact_lines(facts: list[str]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for fact in facts:
+            if not isinstance(fact, str):
+                continue
+            segments = re.split(r'[\n;|]+', fact)
+            for segment in segments:
+                cleaned = re.sub(r'\s+', ' ', segment).strip(' \t\r\n-:')
+                if not cleaned:
+                    continue
+
+                key_match = re.match(r'^([a-zA-Zа-яА-Я0-9_\- ]{1,40})\s*[:=]\s*(.+)$', cleaned)
+                if key_match:
+                    key = key_match.group(1).strip().lower()
+                    value = key_match.group(2).strip()
+                    if value and (key in _FACT_WHITELIST_KEYS or value):
+                        cleaned = f'{key_match.group(1).strip()}: {value}'
+                    else:
+                        continue
+
+                normalized = VisionService._normalize_for_scoring(cleaned)
+                if not normalized or normalized in seen:
+                    continue
+                if len(normalized) < 2:
+                    continue
+                seen.add(normalized)
+                result.append(cleaned)
+        return result
+
+    @staticmethod
+    def _extract_fact_text(value: object) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, (int, float, bool)):
+            return str(value).strip()
+        if isinstance(value, dict):
+            for key in ('fact', 'text', 'value'):
+                candidate = value.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    return candidate.strip()
+                if isinstance(candidate, (int, float, bool)):
+                    rendered = str(candidate).strip()
+                    if rendered:
+                        return rendered
+            pairs: list[str] = []
+            for key, item in value.items():
+                key_str = str(key).strip()
+                val_str = str(item).strip() if item is not None else ''
+                if key_str and val_str:
+                    pairs.append(f'{key_str}: {val_str}')
+            return '; '.join(pairs).strip()
+        return ''
 
     @staticmethod
     def _normalize_vlm_facts(values: object) -> list[str]:
@@ -730,23 +833,19 @@ class VisionService:
 
         normalized: list[str] = []
         for item in values:
-            rendered = ''
-            if isinstance(item, dict):
-                pairs: list[str] = []
-                for key, value in item.items():
-                    key_str = str(key).strip()
-                    value_str = str(value).strip() if value is not None else ''
-                    if key_str and value_str:
-                        pairs.append(f'{key_str}: {value_str}')
-                rendered = '; '.join(pairs)
-            elif isinstance(item, (int, float, bool)):
-                rendered = str(item).strip()
-            elif isinstance(item, str):
-                rendered = item.strip()
-
+            rendered = VisionService._extract_fact_text(item)
             if rendered:
                 normalized.append(rendered)
         return normalized
+
+    @staticmethod
+    def _strip_markdown_json_wrapper(raw_output: str) -> str:
+        cleaned = (raw_output or '').strip()
+        if cleaned.startswith('```'):
+            cleaned = re.sub(r'^```\s*json\s*', '', cleaned, flags=re.IGNORECASE)
+            cleaned = re.sub(r'^```\s*', '', cleaned)
+            cleaned = re.sub(r'\s*```$', '', cleaned)
+        return cleaned.strip()
 
     @staticmethod
     def _extract_json_code_block(raw_output: str) -> str | None:
@@ -790,6 +889,9 @@ class VisionService:
             data = json.loads(payload)
         except (json.JSONDecodeError, TypeError):
             return None, 'raw_not_json'
+        if isinstance(data, dict):
+            for field_name in ('visible_facts', 'uncertain_facts', 'not_visible'):
+                data[field_name] = self._normalize_vlm_facts(data.get(field_name))
 
         try:
             return VlmStructuredResponse.model_validate(data), ''
@@ -797,17 +899,18 @@ class VisionService:
             return None, 'json_schema_invalid'
 
     def _parse_vlm_json(self, raw_output: str) -> VlmStructuredResponse | None:
-        parsed, reason = self._validate_vlm_json_payload(raw_output)
+        cleaned_output = self._strip_markdown_json_wrapper(raw_output)
+        parsed, reason = self._validate_vlm_json_payload(cleaned_output)
         if parsed is not None:
             return parsed
 
-        json_block = self._extract_json_code_block(raw_output)
+        json_block = self._extract_json_code_block(cleaned_output)
         if json_block is not None:
             parsed, reason = self._validate_vlm_json_payload(json_block)
             if parsed is not None:
                 return parsed
 
-        json_object = self._extract_first_balanced_json_object(raw_output)
+        json_object = self._extract_first_balanced_json_object(cleaned_output)
         if json_object is not None:
             parsed, reason = self._validate_vlm_json_payload(json_object)
             if parsed is not None:
