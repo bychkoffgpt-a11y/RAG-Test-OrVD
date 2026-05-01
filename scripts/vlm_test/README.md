@@ -41,6 +41,14 @@ bash ./run_full_diagnostics.sh
 - базовые и v2 отчёты (JSON + CSV);
 - `comparison.md` — итоговое сравнение.
 
+Начиная с текущей версии, `vlm_*_results.jsonl` также содержит диагностические поля:
+- `visual_evidence_count`
+- `nonempty_ocr_count`
+- `answer_len`
+- `json_parse_status`
+- `fallback_used`
+- `task_type_detected`
+
 ## Параметры полного прогона
 
 ```bash
@@ -190,6 +198,18 @@ python3 check_ask_trace.py --log-file $LOG_FILE
 - `hallucination_hard_rate` — доля совпадений с negative facts (ниже = лучше).
 - `hallucination_partial_rate` — «мягкая» версия галлюцинаций (ниже = лучше).
 - `latency_p50/p95` — медиана и хвост задержек.
+- `% empty answers` — доля кейсов с пустым `answer_text`.
+- `% visual_evidence without ocr` — доля кейсов, где `visual_evidence` есть, но `ocr_text` пуст во всех элементах.
+- `% parse_fail` — доля кейсов, где `json_parse_status != ok`.
+
+### Пороги регрессии (рекомендуемые)
+- **Critical**: `golden_partial_recall` упал более чем на `0.08` относительно baseline.
+- **Critical**: `% empty answers` вырос более чем на `10 п.п.`.
+- **Major**: `% visual_evidence without ocr` вырос более чем на `8 п.п.`.
+- **Major**: `% parse_fail` вырос более чем на `5 п.п.`.
+- **Major**: `latency_p95_ms` вырос более чем на `30%`.
+
+Порог сравнивается по endpoint отдельно (`/ask`, `/v1/chat/completions`, опционально `/vision/debug/recognize`).
 
 ### Практические паттерны
 1. `/ask` почти 0, `/chat` заметно выше

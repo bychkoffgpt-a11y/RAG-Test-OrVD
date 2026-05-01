@@ -284,6 +284,8 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
 
     errors = 0
     empty_answer_cases = 0
+    parse_fail_cases = 0
+    visual_without_ocr_cases = 0
 
     for r in rows:
         cid = r.get("id", "unknown")
@@ -293,6 +295,10 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         ans, scored_from = extract_scoring_text(r)
         if not str(ans or "").strip():
             empty_answer_cases += 1
+        if r.get("json_parse_status") not in (None, "", "ok"):
+            parse_fail_cases += 1
+        if (r.get("visual_evidence_count") or 0) > 0 and (r.get("nonempty_ocr_count") or 0) == 0:
+            visual_without_ocr_cases += 1
         err = r.get("error")
         if err:
             errors += 1
@@ -363,6 +369,8 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         g = by_group.setdefault(grp, {
             "cases": 0,
             "empty_answer_cases": 0,
+            "parse_fail_cases": 0,
+            "visual_without_ocr_cases": 0,
             "gold_total": 0, "gold_hard": 0, "gold_partial_sum": 0.0,
             "neg_total": 0, "neg_hard": 0, "neg_partial_sum": 0.0,
             "lat": []
@@ -370,6 +378,10 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         g["cases"] += 1
         if not str(ans or "").strip():
             g["empty_answer_cases"] += 1
+        if r.get("json_parse_status") not in (None, "", "ok"):
+            g["parse_fail_cases"] += 1
+        if (r.get("visual_evidence_count") or 0) > 0 and (r.get("nonempty_ocr_count") or 0) == 0:
+            g["visual_without_ocr_cases"] += 1
         g["gold_total"] += len(golden)
         g["gold_hard"] += gold_hard
         g["gold_partial_sum"] += sum(gold_scores)
@@ -383,6 +395,11 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         "cases_total": len(rows),
         "cases_with_error": errors,
         "empty_answer_cases": empty_answer_cases,
+        "empty_answers_pct": round((empty_answer_cases / len(rows) * 100.0) if rows else 0.0, 2),
+        "parse_fail_cases": parse_fail_cases,
+        "parse_fail_pct": round((parse_fail_cases / len(rows) * 100.0) if rows else 0.0, 2),
+        "visual_without_ocr_cases": visual_without_ocr_cases,
+        "visual_without_ocr_pct": round((visual_without_ocr_cases / len(rows) * 100.0) if rows else 0.0, 2),
         "golden_total": total_gold,
         "golden_hard_hits": total_gold_hard_hits,
         "golden_hard_recall": round((total_gold_hard_hits / total_gold) if total_gold else 0.0, 4),
@@ -401,6 +418,11 @@ def score(rows: List[Dict[str, Any]], aliases: Dict[str, List[str]], hit_thresho
         groups[grp] = {
             "cases": g["cases"],
             "empty_answer_cases": g["empty_answer_cases"],
+            "empty_answers_pct": round((g["empty_answer_cases"] / g["cases"] * 100.0) if g["cases"] else 0.0, 2),
+            "parse_fail_cases": g["parse_fail_cases"],
+            "parse_fail_pct": round((g["parse_fail_cases"] / g["cases"] * 100.0) if g["cases"] else 0.0, 2),
+            "visual_without_ocr_cases": g["visual_without_ocr_cases"],
+            "visual_without_ocr_pct": round((g["visual_without_ocr_cases"] / g["cases"] * 100.0) if g["cases"] else 0.0, 2),
             "golden_hard_recall": round((g["gold_hard"] / g["gold_total"]) if g["gold_total"] else 0.0, 4),
             "golden_partial_recall": round((g["gold_partial_sum"] / g["gold_total"]) if g["gold_total"] else 0.0, 4),
             "hallucination_hard_rate": round((g["neg_hard"] / g["neg_total"]) if g["neg_total"] else 0.0, 4),
@@ -445,6 +467,9 @@ def main():
     print(f"Input file                  : {args.input}")
     print(f"Cases total                 : {s['cases_total']}")
     print(f"Cases with error            : {s['cases_with_error']}")
+    print(f"% empty answers             : {s['empty_answers_pct']}")
+    print(f"% visual_evidence w/o ocr   : {s['visual_without_ocr_pct']}")
+    print(f"% parse_fail                : {s['parse_fail_pct']}")
     print(f"Golden hard recall          : {s['golden_hard_recall']:.4f} ({s['golden_hard_hits']}/{s['golden_total']})")
     print(f"Golden partial recall       : {s['golden_partial_recall']:.4f}")
     print(f"Hallucination hard rate     : {s['hallucination_hard_rate']:.4f} ({s['negative_hard_hits']}/{s['negative_total']})")
@@ -459,6 +484,15 @@ def main():
               f"gold_hard={m['golden_hard_recall']:.4f}, gold_partial={m['golden_partial_recall']:.4f}, "
               f"hall_hard={m['hallucination_hard_rate']:.4f}, hall_partial={m['hallucination_partial_rate']:.4f}, "
               f"p50={m['latency_p50_ms']}, p95={m['latency_p95_ms']}")
+    print("\n=== BREAKDOWN (text/sign/chart) ===")
+    for g in ("text", "sign", "chart"):
+        m = report["groups"].get(g)
+        if not m:
+            print(f"[{g}] n/a")
+            continue
+        print(f"[{g}] % empty answers={m['empty_answers_pct']}, "
+              f"% visual_evidence without ocr={m['visual_without_ocr_pct']}, "
+              f"% parse_fail={m['parse_fail_pct']}")
 
     print(f"\nSaved summary JSON          : {args.out_json}")
     print(f"Saved per-case CSV          : {args.out_csv}")

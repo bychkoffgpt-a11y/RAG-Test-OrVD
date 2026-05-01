@@ -51,6 +51,25 @@ def extract_text(resp: dict) -> str:
     return json.dumps(resp, ensure_ascii=False)
 
 
+def enrich_runtime_fields(row: dict, resp: dict | None) -> None:
+    raw = resp if isinstance(resp, dict) else {}
+    visual = raw.get("visual_evidence") if isinstance(raw.get("visual_evidence"), list) else []
+    nonempty_ocr_count = sum(
+        1 for ev in visual
+        if isinstance(ev, dict) and isinstance(ev.get("ocr_text"), str) and ev.get("ocr_text").strip()
+    )
+    row["visual_evidence_count"] = len(visual)
+    row["nonempty_ocr_count"] = nonempty_ocr_count
+    row["answer_len"] = len((row.get("answer_text") or "").strip())
+    row["json_parse_status"] = "ok" if isinstance(resp, dict) else "not_json"
+    row["fallback_used"] = bool(raw.get("fallback_used")) if isinstance(resp, dict) else False
+    row["task_type_detected"] = ""
+    for ev in visual:
+        if isinstance(ev, dict) and isinstance(ev.get("task_type"), str) and ev.get("task_type").strip():
+            row["task_type_detected"] = ev.get("task_type").strip()
+            break
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--api-url", required=True, help="например http://localhost:8000")
@@ -107,6 +126,7 @@ def main():
             visual = (resp or {}).get("visual_evidence") if isinstance(resp, dict) else None
             if isinstance(visual, list) and visual:
                 row["task_type_routed"] = (visual[0] or {}).get("task_type")
+            enrich_runtime_fields(row, resp)
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
             print(f"[{c['id']}] latency={latency_ms}ms error={err is not None}")
             time.sleep(args.sleep)

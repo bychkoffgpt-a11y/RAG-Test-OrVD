@@ -94,6 +94,26 @@ def main():
         "- `latency_p95_ms` gap helps detect heavy VLM processing or retries in one endpoint only.",
     ])
 
+    def endpoint_taxonomy(name: str, summary: dict) -> list[str]:
+        reasons = [
+            ("empty answers", summary.get("empty_answer_cases", 0), summary.get("empty_answers_pct")),
+            ("visual_evidence without ocr", summary.get("visual_without_ocr_cases", 0), summary.get("visual_without_ocr_pct")),
+            ("parse_fail", summary.get("parse_fail_cases", 0), summary.get("parse_fail_pct")),
+        ]
+        reasons = sorted(reasons, key=lambda x: x[1], reverse=True)[:3]
+        out = [f"### {name}"]
+        for label, count, pct in reasons:
+            out.append(f"- {label}: {count} cases ({fmt(pct)}%)")
+        return out
+
+    lines.extend(["", "## Failure taxonomy", ""])
+    lines.extend(endpoint_taxonomy("/ask", ask_s))
+    lines.extend([""])
+    lines.extend(endpoint_taxonomy("/v1/chat/completions", chat_s))
+    if vision:
+        lines.extend([""])
+        lines.extend(endpoint_taxonomy("/vision/debug/recognize", vision.get("summary") or {}))
+
     Path(args.out_markdown).write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Saved: {args.out_markdown}")
 
