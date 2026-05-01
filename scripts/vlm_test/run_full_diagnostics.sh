@@ -35,6 +35,9 @@ RUN_META_PATH="${OUT_DIR}/run_meta.txt"
 } > "$RUN_META_PATH"
 
 echo "Saved run metadata: ${RUN_META_PATH}"
+echo "Run metadata:"
+cat "$RUN_META_PATH"
+echo ""
 
 echo "[1/8] /ask run"
 python3 "${ROOT_DIR}/run_vlm_ask.py" \
