@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 from unittest.mock import Mock
+import numpy as np
 
 from src.api.schemas import AttachmentItem
 from src.vision.service import VisionService
@@ -189,10 +190,15 @@ def test_run_vlm_repairs_invalid_json(monkeypatch, tmp_path):
             return messages[0]['content'][1]['text']
 
         def __call__(self, text, images, return_tensors='pt', padding=True):
-            return {}
+            return {'input_ids': np.array([[11, 12, 13]])}
 
         def batch_decode(self, generated, **kwargs):
-            return [generated]
+            payload = tuple(generated[0].tolist())
+            mapping = {
+                (100, 101): 'user: q assistant: not-json',
+                (200, 201): '{"visible_facts":["ok"],"uncertain_facts":[],"not_visible":[],"confidence":0.7}',
+            }
+            return [mapping[payload]]
 
     class DummyModel:
         def __init__(self):
@@ -201,8 +207,8 @@ def test_run_vlm_repairs_invalid_json(monkeypatch, tmp_path):
         def generate(self, **kwargs):
             self.calls += 1
             if self.calls == 1:
-                return 'not-json'
-            return '{"visible_facts":["ok"],"uncertain_facts":[],"not_visible":[],"confidence":0.7}'
+                return np.array([[11, 12, 13, 100, 101]])
+            return np.array([[11, 12, 13, 200, 201]])
 
     class DummyTorch:
         class _NoGrad:
@@ -233,10 +239,15 @@ def test_run_vlm_runtime_fallback_keeps_raw_text_when_json_invalid(monkeypatch, 
             return messages[0]['content'][1]['text']
 
         def __call__(self, text, images, return_tensors='pt', padding=True):
-            return {}
+            return {'input_ids': np.array([[21, 22]])}
 
         def batch_decode(self, generated, **kwargs):
-            return [generated]
+            payload = tuple(generated[0].tolist())
+            mapping = {
+                (111,): 'first non-json output',
+                (222,): 'second still invalid',
+            }
+            return [mapping[payload]]
 
     class DummyModel:
         def __init__(self):
@@ -245,8 +256,8 @@ def test_run_vlm_runtime_fallback_keeps_raw_text_when_json_invalid(monkeypatch, 
         def generate(self, **kwargs):
             self.calls += 1
             if self.calls == 1:
-                return 'first non-json output'
-            return 'second still invalid'
+                return np.array([[21, 22, 111]])
+            return np.array([[21, 22, 222]])
 
     class DummyTorch:
         class _NoGrad:
@@ -265,6 +276,19 @@ def test_run_vlm_runtime_fallback_keeps_raw_text_when_json_invalid(monkeypatch, 
 
     result = service._run_vlm(str(image), question='q', deadline=None, allow_raw_fallback=True)
     assert result == 'second still invalid'
+
+
+def test_decode_generated_tail_removes_prompt_tokens_and_dialog_markup():
+    class DummyProcessor:
+        def batch_decode(self, generated, **kwargs):
+            payload = tuple(generated[0].tolist())
+            assert payload == (301, 302)
+            return ['assistant: Чистый ответ модели']
+
+    generated = np.array([[1, 2, 3, 301, 302]])
+    result = VisionService._decode_generated_tail(DummyProcessor(), generated, prompt_len=3)
+
+    assert result == 'assistant: Чистый ответ модели'
 
 
 def test_normalize_for_scoring_handles_numbers_dates_units():

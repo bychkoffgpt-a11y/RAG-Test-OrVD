@@ -613,6 +613,7 @@ class VisionService:
                 text = prompt
 
             inputs = processor(text=[text], images=[image], return_tensors='pt', padding=True)
+            prompt_len = int(inputs['input_ids'].shape[1])
             if device == 'cuda':
                 inputs = {k: (v.to('cuda') if hasattr(v, 'to') else v) for k, v in inputs.items()}
             generate_kwargs = {'max_new_tokens': settings.vision_model_max_new_tokens}
@@ -624,10 +625,7 @@ class VisionService:
                 generate_kwargs['max_time'] = remaining
             with torch.no_grad():
                 generated = model.generate(**inputs, **generate_kwargs)
-            output = processor.batch_decode(generated, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-            result = (output[0] if output else '').strip()
-            if result.startswith(text):
-                result = result[len(text):].strip()
+            result = self._decode_generated_tail(processor, generated, prompt_len=prompt_len)
             if self._parse_vlm_json(result) is not None:
                 return result
 
@@ -638,14 +636,12 @@ class VisionService:
             else:
                 repair_prompt = repair_text
             repair_inputs = processor(text=[repair_prompt], images=[image], return_tensors='pt', padding=True)
+            repair_prompt_len = int(repair_inputs['input_ids'].shape[1])
             if device == 'cuda':
                 repair_inputs = {k: (v.to('cuda') if hasattr(v, 'to') else v) for k, v in repair_inputs.items()}
             with torch.no_grad():
                 repair_generated = model.generate(**repair_inputs, **generate_kwargs)
-            repaired_output = processor.batch_decode(repair_generated, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-            repaired = (repaired_output[0] if repaired_output else '').strip()
-            if repaired.startswith(repair_prompt):
-                repaired = repaired[len(repair_prompt):].strip()
+            repaired = self._decode_generated_tail(processor, repair_generated, prompt_len=repair_prompt_len)
             if self._parse_vlm_json(repaired) is None:
                 logger.warning('vision_vlm_json_invalid_after_retry', extra={'image_path': image_path})
                 if allow_raw_fallback:
@@ -660,6 +656,15 @@ class VisionService:
         except Exception:
             logger.exception('vision_vlm_inference_failed', extra={'image_path': image_path})
             return ''
+
+    @staticmethod
+    def _decode_generated_tail(processor, generated, *, prompt_len: int) -> str:
+        decoded = processor.batch_decode(
+            generated[:, prompt_len:],
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=True,
+        )
+        return (decoded[0] if decoded else '').strip()
 
     @staticmethod
     def _repair_prompt(raw_output: str) -> str:
