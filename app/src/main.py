@@ -446,6 +446,14 @@ def vision_debug_recognize(payload: VisionDebugRequest):
     except TypeError:
         raw_visual = orch.vision.analyze_attachments(normalized_attachments, prompt)
     visual_evidence = raw_visual if isinstance(raw_visual, list) else []
+    if visual_evidence:
+        has_any_ocr = any(str((item or {}).get('ocr_text') or '').strip() for item in visual_evidence if isinstance(item, dict))
+        if not has_any_ocr:
+            for item in visual_evidence:
+                if not isinstance(item, dict):
+                    continue
+                summary = str(item.get('summary') or '').strip()
+                item['ocr_text'] = summary or '(ocr unavailable)'
     answer = orch._render_visual_answer(
         visual_evidence,
         max_tokens=payload.max_tokens,

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from print_vlm_faceoff import _format_hint, extract_scoring_text
+from print_vlm_faceoff import render_case
 
 
 def test_format_hint_suggests_results_file_for_summary_input(tmp_path: Path) -> None:
@@ -47,3 +48,18 @@ def test_extract_scoring_text_fallback_answer_text_when_no_sources() -> None:
     text, scored_from = extract_scoring_text(row)
     assert text == ""
     assert scored_from == "answer_text"
+
+
+def test_render_case_dumps_visual_evidence_when_answer_text_empty(capsys) -> None:
+    row = {
+        "id": "case-empty-answer",
+        "answer_text": "",
+        "raw_response": {
+            "visual_evidence": [{}]
+        },
+    }
+    render_case(row, 500)
+    out = capsys.readouterr().out
+    assert "RAW VISUAL EVIDENCE DUMP" in out
+    assert "summary=-" in out
+    assert "(empty)" in out
