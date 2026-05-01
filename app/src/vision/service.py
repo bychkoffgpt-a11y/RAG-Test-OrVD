@@ -756,29 +756,49 @@ class VisionService:
         return result
 
     @staticmethod
+    def _extract_fact_text(value: object) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, (int, float, bool)):
+            return str(value).strip()
+        if isinstance(value, dict):
+            for key in ('fact', 'text', 'value'):
+                candidate = value.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    return candidate.strip()
+                if isinstance(candidate, (int, float, bool)):
+                    rendered = str(candidate).strip()
+                    if rendered:
+                        return rendered
+            pairs: list[str] = []
+            for key, item in value.items():
+                key_str = str(key).strip()
+                val_str = str(item).strip() if item is not None else ''
+                if key_str and val_str:
+                    pairs.append(f'{key_str}: {val_str}')
+            return '; '.join(pairs).strip()
+        return ''
+
+    @staticmethod
     def _normalize_vlm_facts(values: object) -> list[str]:
         if not isinstance(values, list):
             return []
 
         normalized: list[str] = []
         for item in values:
-            rendered = ''
-            if isinstance(item, dict):
-                pairs: list[str] = []
-                for key, value in item.items():
-                    key_str = str(key).strip()
-                    value_str = str(value).strip() if value is not None else ''
-                    if key_str and value_str:
-                        pairs.append(f'{key_str}: {value_str}')
-                rendered = '; '.join(pairs)
-            elif isinstance(item, (int, float, bool)):
-                rendered = str(item).strip()
-            elif isinstance(item, str):
-                rendered = item.strip()
-
+            rendered = VisionService._extract_fact_text(item)
             if rendered:
                 normalized.append(rendered)
         return normalized
+
+    @staticmethod
+    def _strip_markdown_json_wrapper(raw_output: str) -> str:
+        cleaned = (raw_output or '').strip()
+        if cleaned.startswith('```'):
+            cleaned = re.sub(r'^```\s*json\s*', '', cleaned, flags=re.IGNORECASE)
+            cleaned = re.sub(r'^```\s*', '', cleaned)
+            cleaned = re.sub(r'\s*```$', '', cleaned)
+        return cleaned.strip()
 
     @staticmethod
     def _extract_json_code_block(raw_output: str) -> str | None:
@@ -822,6 +842,9 @@ class VisionService:
             data = json.loads(payload)
         except (json.JSONDecodeError, TypeError):
             return None, 'raw_not_json'
+        if isinstance(data, dict):
+            for field_name in ('visible_facts', 'uncertain_facts', 'not_visible'):
+                data[field_name] = self._normalize_vlm_facts(data.get(field_name))
 
         try:
             return VlmStructuredResponse.model_validate(data), ''
@@ -829,17 +852,18 @@ class VisionService:
             return None, 'json_schema_invalid'
 
     def _parse_vlm_json(self, raw_output: str) -> VlmStructuredResponse | None:
-        parsed, reason = self._validate_vlm_json_payload(raw_output)
+        cleaned_output = self._strip_markdown_json_wrapper(raw_output)
+        parsed, reason = self._validate_vlm_json_payload(cleaned_output)
         if parsed is not None:
             return parsed
 
-        json_block = self._extract_json_code_block(raw_output)
+        json_block = self._extract_json_code_block(cleaned_output)
         if json_block is not None:
             parsed, reason = self._validate_vlm_json_payload(json_block)
             if parsed is not None:
                 return parsed
 
-        json_object = self._extract_first_balanced_json_object(raw_output)
+        json_object = self._extract_first_balanced_json_object(cleaned_output)
         if json_object is not None:
             parsed, reason = self._validate_vlm_json_payload(json_object)
             if parsed is not None:

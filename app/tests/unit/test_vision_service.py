@@ -202,11 +202,22 @@ The UI shows an error.
     assert parsed.visible_facts == ['Error 500']
 
 
-def test_parse_vlm_json_invalid_schema_objects_list():
+def test_parse_vlm_json_objects_list_normalized_by_priority_keys():
     service = VisionService()
-    raw = '{"visible_facts":[{"k":"v"}],"uncertain_facts":[],"not_visible":[],"confidence":0.8}'
+    raw = '{"visible_facts":[{"fact":"Error 500"},{"text":"Button disabled"}],"uncertain_facts":[],"not_visible":[],"confidence":0.8}'
     parsed = service._parse_vlm_json(raw)
-    assert parsed is None
+    assert parsed is not None
+    assert parsed.visible_facts == ['Error 500', 'Button disabled']
+
+
+def test_compose_structured_text_with_visible_facts_objects_is_readable():
+    service = VisionService()
+    raw = '{"visible_facts":[{"fact":"Error 500"},{"text":"Retry button disabled"}],"uncertain_facts":[],"not_visible":[],"confidence":0.8}'
+    ocr_text = service._compose_structured_text(raw)
+    assert ocr_text
+    assert 'error 500' in ocr_text
+    assert 'retry button disabled' in ocr_text
+    assert '|' in ocr_text
 
 def test_run_vlm_repairs_invalid_json(monkeypatch, tmp_path):
     image = tmp_path / 'screen.png'
