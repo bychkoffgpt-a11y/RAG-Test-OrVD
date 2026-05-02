@@ -21,6 +21,7 @@ _VLM_SUPPORTED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.ti
 _VISION_TASK_TYPES = {'text', 'sign', 'chart'}
 _VLM_RAW_FALLBACK_MAX_CHARS = 2000
 _FACT_WHITELIST_KEYS = {'id', 'due', 'date', 'room', 'owner', 'status', 'capacity'}
+_VLM_RAW_QUALITY_MARKER = '[vlm_quality:raw_fallback]'
 
 
 class VlmChartPoint(BaseModel):
@@ -285,6 +286,8 @@ class VisionService:
                 ocr_text = extracted_text.strip()
             if not ocr_text.strip():
                 ocr_text = self._sanitize_vlm_fallback_text(extracted_text)
+            if vlm_output_format == 'raw' and ocr_text.strip():
+                ocr_text = f'{_VLM_RAW_QUALITY_MARKER} {ocr_text}'.strip()
 
         logger.info(
             'vision_image_processed',
@@ -715,7 +718,7 @@ class VisionService:
             if self._parse_vlm_json(repaired) is None:
                 logger.warning('vision_vlm_json_invalid_after_retry', extra={'image_path': image_path})
                 if allow_raw_fallback:
-                    fallback = self._sanitize_vlm_fallback_text(repaired or result)
+                    fallback = self._build_structured_parse_failed_payload(repaired or result)
                     logger.info(
                         'vision_vlm_raw_fallback_used',
                         extra={'image_path': image_path, 'fallback_length': len(fallback)},
@@ -772,7 +775,11 @@ class VisionService:
             if chart_text:
                 return chart_text
         if parsed is None:
-            return ''
+            fallback_lines = self._collect_atomic_fact_lines([raw_output])
+            if fallback_lines:
+                return self._normalize_for_scoring(' | '.join(fallback_lines))
+            fallback_text = self._sanitize_vlm_fallback_text(raw_output)
+            return self._normalize_for_scoring(fallback_text)
 
         facts = [*parsed.visible_facts, *parsed.uncertain_facts, *parsed.not_visible]
         atomic_lines = self._collect_atomic_fact_lines(facts)
@@ -1020,3 +1027,15 @@ class VisionService:
         if len(ocr_text) < 120:
             return 0.65
         return 0.82
+    @staticmethod
+    def _build_structured_parse_failed_payload(raw_output: str) -> str:
+        raw_fragment = VisionService._sanitize_vlm_fallback_text(raw_output)
+        if raw_fragment == '[vlm_empty_output]':
+            raw_fragment = 'vlm_empty_output'
+        payload = {
+            'visible_facts': [],
+            'uncertain_facts': [raw_fragment],
+            'not_visible': ['structured_parse_failed'],
+            'confidence': 0.0,
+        }
+        return json.dumps(payload, ensure_ascii=False)

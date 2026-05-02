@@ -112,7 +112,7 @@ def test_runtime_mode_vlm_uses_vlm_extractor(monkeypatch, tmp_path):
 
     assert len(evidence) == 1
     assert evidence[0].summary
-    assert evidence[0].ocr_text == 'Detected app error screen'
+    assert evidence[0].ocr_text == '[vlm_quality:raw_fallback] detected app error screen'
     assert evidence[0].vlm_output_format == 'raw'
     ocr_mock.assert_not_called()
 
@@ -337,7 +337,9 @@ def test_run_vlm_runtime_fallback_keeps_raw_text_when_json_invalid(monkeypatch, 
     monkeypatch.setitem(sys.modules, 'PIL', type('P', (), {'Image': type('I', (), {'open': staticmethod(lambda *_: type('Img', (), {'convert': lambda self, _: self})())})})())
 
     result, meta = service._run_vlm(str(image), question='q', deadline=None, allow_raw_fallback=True)
-    assert result == 'second still invalid'
+    assert '"not_visible": ["structured_parse_failed"]' in result
+    assert '"confidence": 0.0' in result
+    assert 'second still invalid' in result
     assert meta.get('fallback_applied') is True
 
 
@@ -376,7 +378,8 @@ def test_run_vlm_runtime_fallback_returns_marker_for_empty_model_output(monkeypa
     monkeypatch.setitem(sys.modules, 'PIL', type('P', (), {'Image': type('I', (), {'open': staticmethod(lambda *_: type('Img', (), {'convert': lambda self, _: self})())})})())
 
     result, meta = service._run_vlm(str(image), question='q', deadline=None, allow_raw_fallback=True)
-    assert result == '[vlm_empty_output]'
+    assert '"not_visible": ["structured_parse_failed"]' in result
+    assert '"uncertain_facts": ["vlm_empty_output"]' in result
     assert meta.get('fallback_applied') is True
 
 
@@ -391,6 +394,29 @@ def test_analyze_single_image_vlm_uses_marker_when_model_output_empty(monkeypatc
 
     assert len(evidence) == 1
     assert evidence[0].ocr_text == '[vlm_empty_output]'
+
+
+def test_analyze_attachments_vlm_broken_json_has_predictable_nonempty_ocr_text(monkeypatch, tmp_path):
+    image = tmp_path / 'broken.png'
+    image.write_bytes(b'fake')
+    service = VisionService()
+    monkeypatch.setattr('src.vision.service.settings.vision_runtime_mode', 'vlm', raising=False)
+    monkeypatch.setattr(
+        service,
+        '_extract_image_text_or_caption',
+        lambda *args, **kwargs: (
+            'truncated raw fragment',
+            {'fallback_applied': True},
+        ),
+    )
+
+    evidence = service.analyze_attachments([AttachmentItem(image_path=str(image))], question='Что на скрине?')
+
+    assert len(evidence) == 1
+    assert evidence[0].ocr_text
+    assert evidence[0].ocr_text.startswith('[vlm_quality:raw_fallback]')
+    assert 'truncated raw fragment' in evidence[0].ocr_text
+    assert evidence[0].vlm_output_format == 'raw'
 
 
 def test_decode_generated_tail_removes_prompt_tokens_and_dialog_markup():
