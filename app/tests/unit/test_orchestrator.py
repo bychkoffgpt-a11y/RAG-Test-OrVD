@@ -90,6 +90,41 @@ class _RetrieverWithOneContext:
         }
 
 
+class _RetrieverWithAviationNoise:
+    def retrieve_with_trace(self, question, top_k, scope):
+        contexts = [
+            {
+                'doc_id': 'REG-AVIATION-1',
+                'source_type': 'internal_regulations',
+                'page_number': 1,
+                'chunk_id': 'reg-noise-1',
+                'score': 0.95,
+                'image_paths': [],
+                'text': 'Авиационные правила обслуживания ВС и перрона',
+            },
+            {
+                'doc_id': 'DOC-CALC-1',
+                'source_type': 'csv_ans_docs',
+                'page_number': 3,
+                'chunk_id': 'doc-calc-1',
+                'score': 0.82,
+                'image_paths': [],
+                'text': 'Расчет пени и претензии по договору обслуживания',
+            },
+        ]
+        return contexts, {
+            'query': {'question': question, 'scope': scope, 'top_k': top_k, 'candidate_limit': top_k},
+            'timings_sec': {'embedding': 0.001, 'retrieval': 0.002, 'rerank': 0.001, 'total': 0.004},
+            'raw_by_collection': {'csv_ans_docs': [], 'internal_regulations': []},
+            'combined_sorted': contexts,
+            'deduped_count': len(contexts),
+            'filtered_count': len(contexts),
+            'returned_count': len(contexts),
+            'reranker': {'enabled': True, 'applied': True, 'min_score': 0.25},
+            'contexts_used_for_prompt': contexts,
+        }
+
+
 class _LlmWithFixedAnswer:
     def generate(self, prompt, max_tokens=512, temperature=0.1, trace=None):
         if trace is not None:
@@ -255,6 +290,32 @@ def test_orchestrator_returns_response_when_trace_write_permission_error(monkeyp
 
     assert response.answer == 'Тестовый ответ'
     assert len(response.sources) == 1
+
+
+def test_orchestrator_multimodal_calc_query_prioritizes_corpus_a_over_aviation_noise():
+    orch = RagOrchestrator()
+    orch.retriever = _RetrieverWithAviationNoise()
+    orch.llm = _LlmWithFixedAnswer()
+    orch.vision = _VisionWithEvidence()
+    captured = {}
+
+    class _TraceWriter:
+        def write(self, card):
+            captured['card'] = card
+            return {'json_path': '/tmp/a.json', 'markdown_path': '/tmp/a.md'}
+
+    orch.trace_writer = _TraceWriter()
+
+    payload = AskRequest(
+        question='Нужен расчет пени по претензии',
+        top_k=8,
+        scope='all',
+        attachments=[AttachmentItem(image_path='/tmp/calc.png')],
+    )
+    response = orch.answer(payload)
+
+    assert response.sources[0].source_type == 'csv_ans_docs'
+    assert captured['card']['stages']['retrieval']['post_processing']['scope_all_csv_ans_docs_soft_bias_applied'] is True
 
 
 def test_orchestrator_render_visual_answer_contains_ocr_vlm_facts_without_service_tail():

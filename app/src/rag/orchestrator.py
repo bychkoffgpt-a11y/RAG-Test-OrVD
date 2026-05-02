@@ -123,6 +123,22 @@ class RagOrchestrator:
                 lines.append(f'[{idx}] ' + ' | '.join(chunks))
         return '\n'.join(lines).strip()
 
+    @staticmethod
+    def _apply_scope_all_domain_bias(contexts: list[dict], payload: AskRequest) -> tuple[list[dict], bool]:
+        if payload.scope != 'all' or not payload.attachments:
+            return contexts, False
+
+        normalized = f" {payload.question.lower()} "
+        domain_markers = ('расчет', 'расчёт', 'пени', 'претенз')
+        if not any(marker in normalized for marker in domain_markers):
+            return contexts, False
+
+        csv_items = [item for item in contexts if item.get('source_type') == 'csv_ans_docs']
+        other_items = [item for item in contexts if item.get('source_type') != 'csv_ans_docs']
+        if not csv_items:
+            return contexts, False
+        return [*csv_items, *other_items], True
+
     def answer(
         self,
         payload: AskRequest,
@@ -197,6 +213,9 @@ class RagOrchestrator:
         trace_card['aggregate_timings_sec']['vision'] = round(vision_duration, 6)
 
         contexts, retrieval_trace = self.retriever.retrieve_with_trace(payload.question, payload.top_k, payload.scope)
+        contexts, scope_bias_applied = self._apply_scope_all_domain_bias(contexts, payload)
+        retrieval_trace['contexts_used_for_prompt'] = contexts
+        retrieval_trace.setdefault('post_processing', {})['scope_all_csv_ans_docs_soft_bias_applied'] = scope_bias_applied
         retrieve_duration = retrieval_trace.get('timings_sec', {}).get('total', 0.0)
         self._observe_stage(endpoint=endpoint, stage='retrieval', duration_sec=retrieve_duration, payload=payload)
         logger.info(
