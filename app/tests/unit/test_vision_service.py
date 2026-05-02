@@ -286,8 +286,9 @@ def test_run_vlm_repairs_invalid_json(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, 'torch', DummyTorch())
     monkeypatch.setitem(sys.modules, 'PIL', type('P', (), {'Image': type('I', (), {'open': staticmethod(lambda *_: type('Img', (), {'convert': lambda self, _: self})())})})())
 
-    result = service._run_vlm(str(image), question='q', deadline=None)
+    result, meta = service._run_vlm(str(image), question='q', deadline=None)
     assert 'visible_facts' in result
+    assert meta.get('max_new_tokens_used')
 
 
 def test_run_vlm_runtime_fallback_keeps_raw_text_when_json_invalid(monkeypatch, tmp_path):
@@ -335,8 +336,9 @@ def test_run_vlm_runtime_fallback_keeps_raw_text_when_json_invalid(monkeypatch, 
     monkeypatch.setitem(sys.modules, 'torch', DummyTorch())
     monkeypatch.setitem(sys.modules, 'PIL', type('P', (), {'Image': type('I', (), {'open': staticmethod(lambda *_: type('Img', (), {'convert': lambda self, _: self})())})})())
 
-    result = service._run_vlm(str(image), question='q', deadline=None, allow_raw_fallback=True)
+    result, meta = service._run_vlm(str(image), question='q', deadline=None, allow_raw_fallback=True)
     assert result == 'second still invalid'
+    assert meta.get('fallback_applied') is True
 
 
 def test_run_vlm_runtime_fallback_returns_marker_for_empty_model_output(monkeypatch, tmp_path):
@@ -373,8 +375,9 @@ def test_run_vlm_runtime_fallback_returns_marker_for_empty_model_output(monkeypa
     monkeypatch.setitem(sys.modules, 'torch', DummyTorch())
     monkeypatch.setitem(sys.modules, 'PIL', type('P', (), {'Image': type('I', (), {'open': staticmethod(lambda *_: type('Img', (), {'convert': lambda self, _: self})())})})())
 
-    result = service._run_vlm(str(image), question='q', deadline=None, allow_raw_fallback=True)
+    result, meta = service._run_vlm(str(image), question='q', deadline=None, allow_raw_fallback=True)
     assert result == '[vlm_empty_output]'
+    assert meta.get('fallback_applied') is True
 
 
 def test_analyze_single_image_vlm_uses_marker_when_model_output_empty(monkeypatch, tmp_path):
@@ -382,7 +385,7 @@ def test_analyze_single_image_vlm_uses_marker_when_model_output_empty(monkeypatc
     image.write_bytes(b'fake')
     service = VisionService()
     monkeypatch.setattr('src.vision.service.settings.vision_runtime_mode', 'vlm', raising=False)
-    monkeypatch.setattr(service, '_extract_image_text_or_caption', lambda *args, **kwargs: '')
+    monkeypatch.setattr(service, '_extract_image_text_or_caption', lambda *args, **kwargs: ('', {}))
 
     evidence = service.analyze_attachments([AttachmentItem(image_path=str(image))], question='Что на скрине?')
 

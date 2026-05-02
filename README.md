@@ -83,6 +83,19 @@
 - финальный prompt перед LLM и ответ;
 - агрегированные тайминги по этапам (`pre_processing`, `vision`, `embedding`, `vector_search`, `rerank`, `prompt_build`, `llm_generation`, `post_formatting`, `total`).
 
+Диагностика VLM в trace (`stages.vision.visual_evidence[*]`):
+- `vlm_output_format`: `json|raw`;
+- `vlm_json_parse_ok`: успешность парсинга JSON-ответа VLM;
+- `vlm_raw_length`: длина raw-ответа (если `vlm_output_format=raw`);
+- `vlm_fallback_applied`: применялся ли fallback до raw-текста;
+- `vlm_max_new_tokens_used`: фактически использованный лимит генерации VLM.
+
+Как отличать типовые проблемы:
+- **Обрыв из-за `max_new_tokens`**: обычно `vlm_output_format=raw`, `vlm_json_parse_ok=false`, `vlm_raw_length` близок к большому значению, а `vlm_max_new_tokens_used` равен runtime/ingest лимиту.
+- **Невалидный JSON**: `vlm_output_format=raw` и `vlm_json_parse_ok=false`, но без признаков timeout; часто присутствует `vlm_fallback_applied=true`.
+- **Timeout до generate**: `vision` stage короткий/прерывается, `visual_evidence` может быть пустым или с пустым `ocr_text`; в логах ищите `vision_vlm_timeout_before_generate`.
+- **Timeout во время generate**: `vision` stage близок к `VISION_RUNTIME_TIMEOUT_SEC`, ответ часто сырой/неполный (`raw`), а downstream parsing показывает `vlm_json_parse_ok=false`.
+
 Настройки:
 - `RAG_UI_TRACE_ENABLED=true|false` — включение/выключение автосоздания карточек;
 - `RAG_UI_TRACE_DIR=/data/rag_traces/ui_requests` — корневая директория trace-карточек.

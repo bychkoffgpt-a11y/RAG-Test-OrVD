@@ -82,6 +82,16 @@ class TraceCardWriter:
         lines.append(f"- prompt: `{vision.get('vision_prompt', '')}`")
         lines.append(f"- evidence_count: `{len(vision.get('visual_evidence', []) or [])}`")
         lines.append('')
+        lines.append('## Vision diagnostics')
+        for idx, item in enumerate(vision.get('visual_evidence', []) or [], start=1):
+            lines.append(f"- evidence[{idx}] vlm_output_format: `{item.get('vlm_output_format')}`")
+            lines.append(f"- evidence[{idx}] vlm_json_parse_ok: `{item.get('vlm_json_parse_ok')}`")
+            lines.append(f"- evidence[{idx}] vlm_raw_length: `{item.get('vlm_raw_length')}`")
+            lines.append(f"- evidence[{idx}] vlm_fallback_applied: `{item.get('vlm_fallback_applied')}`")
+            lines.append(f"- evidence[{idx}] vlm_max_new_tokens_used: `{item.get('vlm_max_new_tokens_used')}`")
+        if not (vision.get('visual_evidence', []) or []):
+            lines.append('- (empty)')
+        lines.append('')
 
         lines.append('## Retrieval and rerank')
         retrieval = stages.get('retrieval', {})
