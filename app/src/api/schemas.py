@@ -18,6 +18,10 @@ class VisionEvidenceItem(BaseModel):
     task_type: str = 'text'
     vlm_output_format: Literal['json', 'raw'] | None = None
     vlm_diagnostics: dict[str, str] | None = None
+    vlm_json_parse_ok: bool | None = None
+    vlm_raw_length: int | None = None
+    vlm_fallback_applied: bool | None = None
+    vlm_max_new_tokens_used: int | None = None
 
 
 class AskRequest(BaseModel):

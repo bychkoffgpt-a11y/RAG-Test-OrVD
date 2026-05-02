@@ -181,7 +181,7 @@ class VisionService:
             image_path = str(item.get('path', '')).strip()
             if not image_path:
                 continue
-            extracted_text = self._extract_image_text_or_caption(
+            extracted_text, _ = self._extract_image_text_or_caption(
                 image_path,
                 question=settings.vision_model_prompt_ingest,
                 mode=ingest_mode,
@@ -243,7 +243,7 @@ class VisionService:
         cleanup_path: str | None = None
         if mode == 'vlm' and task_type == 'chart':
             effective_image_path, cleanup_path = self._prepare_chart_image_for_vlm(image_path)
-        extracted_text = self._extract_image_text_or_caption(
+        extracted_text, vlm_meta = self._extract_image_text_or_caption(
             effective_image_path,
             question=self._build_task_instruction(question=question, task_type=task_type),
             mode=mode,
@@ -260,13 +260,22 @@ class VisionService:
         confidence = self._estimate_confidence(extracted_text)
         vlm_output_format: str | None = None
         vlm_diagnostics: dict[str, str] | None = None
+        vlm_json_parse_ok: bool | None = None
+        vlm_raw_length: int | None = None
+        vlm_fallback_applied: bool | None = None
+        vlm_max_new_tokens_used: int | None = None
         if mode == 'ocr':
             ocr_text = extracted_text
         else:
             ocr_text = self._compose_structured_text(extracted_text, task_type=task_type)
+            vlm_max_new_tokens_used = vlm_meta.get('max_new_tokens_used')
+            vlm_fallback_applied = bool(vlm_meta.get('fallback_applied'))
             if extracted_text.strip():
                 parsed, parse_meta = self._parse_vlm_json_with_meta(extracted_text, strict_chart_json=(task_type == 'chart'))
+                vlm_json_parse_ok = parsed is not None
                 vlm_output_format = 'json' if parsed is not None else 'raw'
+                if vlm_output_format == 'raw':
+                    vlm_raw_length = len(extracted_text.strip())
                 if parse_meta.get('reason'):
                     vlm_diagnostics = {
                         'reason': parse_meta['reason'],
@@ -298,6 +307,10 @@ class VisionService:
             task_type=task_type,
             vlm_output_format=vlm_output_format,
             vlm_diagnostics=vlm_diagnostics,
+            vlm_json_parse_ok=vlm_json_parse_ok,
+            vlm_raw_length=vlm_raw_length,
+            vlm_fallback_applied=vlm_fallback_applied,
+            vlm_max_new_tokens_used=vlm_max_new_tokens_used,
         )
 
     @staticmethod
@@ -348,11 +361,12 @@ class VisionService:
         for_ingest: bool,
         deadline: float | None = None,
         allow_raw_fallback: bool = False,
-    ) -> str:
+    ) -> tuple[str, dict]:
         if mode == 'vlm':
+            vlm_result: object
             if for_ingest:
                 try:
-                    return self._run_vlm(
+                    vlm_result = self._run_vlm(
                         image_path,
                         question=question,
                         for_ingest=True,
@@ -360,19 +374,23 @@ class VisionService:
                         allow_raw_fallback=allow_raw_fallback,
                     )
                 except TypeError:
-                    return self._run_vlm(
+                    vlm_result = self._run_vlm(
                         image_path,
                         question=question,
                         deadline=deadline,
                         allow_raw_fallback=allow_raw_fallback,
                     )
-            return self._run_vlm(
-                image_path,
-                question=question,
-                deadline=deadline,
-                allow_raw_fallback=allow_raw_fallback,
-            )
-        return self._run_ocr(image_path)
+            else:
+                vlm_result = self._run_vlm(
+                    image_path,
+                    question=question,
+                    deadline=deadline,
+                    allow_raw_fallback=allow_raw_fallback,
+                )
+            if isinstance(vlm_result, tuple) and len(vlm_result) == 2:
+                return str(vlm_result[0] or ''), dict(vlm_result[1] or {})
+            return str(vlm_result or ''), {}
+        return self._run_ocr(image_path), {}
 
     @staticmethod
     def _detect_task_type(*, question: str, image_path: str = '') -> str:
@@ -502,7 +520,7 @@ class VisionService:
     def _run_ocr(self, image_path: str) -> str:
         if not os.path.exists(image_path):
             logger.warning('vision_image_not_found', extra={'image_path': image_path})
-            return ''
+            return '', {'fallback_applied': False}
         if Path(image_path).suffix.lower() in _OCR_UNSUPPORTED_IMAGE_EXTENSIONS:
             logger.warning('vision_ocr_skipped_unsupported_ext', extra={'image_path': image_path})
             return ''
@@ -626,10 +644,10 @@ class VisionService:
         for_ingest: bool = False,
         deadline: float | None,
         allow_raw_fallback: bool = False,
-    ) -> str:
+    ) -> tuple[str, dict]:
         if not os.path.exists(image_path):
             logger.warning('vision_image_not_found', extra={'image_path': image_path})
-            return ''
+            return '', {'fallback_applied': False}
 
         suffix = Path(image_path).suffix.lower()
         if suffix not in _VLM_SUPPORTED_IMAGE_EXTENSIONS:
@@ -637,11 +655,11 @@ class VisionService:
                 'vision_vlm_skipped_unsupported_ext',
                 extra={'image_path': image_path, 'supported': sorted(_VLM_SUPPORTED_IMAGE_EXTENSIONS)},
             )
-            return ''
+            return '', {'fallback_applied': False}
 
         client = self._get_vlm_client()
         if client is None:
-            return ''
+            return '', {'fallback_applied': False}
 
         processor, model, device = client
         prompt = question.strip() or settings.vision_model_prompt_runtime
@@ -673,13 +691,13 @@ class VisionService:
                 remaining = deadline - time.perf_counter()
                 if remaining <= 0:
                     logger.warning('vision_vlm_timeout_before_generate', extra={'image_path': image_path})
-                    return ''
+                    return '', {'timeout_before_generate': True, 'fallback_applied': False}
                 generate_kwargs['max_time'] = remaining
             with torch.no_grad():
                 generated = model.generate(**inputs, **generate_kwargs)
             result = self._decode_generated_tail(processor, generated, prompt_len=prompt_len)
             if self._parse_vlm_json(result) is not None:
-                return result
+                return result, {'fallback_applied': False, 'max_new_tokens_used': max_new_tokens}
 
             repair_text = self._repair_prompt(result)
             if hasattr(processor, 'apply_chat_template'):
@@ -702,12 +720,12 @@ class VisionService:
                         'vision_vlm_raw_fallback_used',
                         extra={'image_path': image_path, 'fallback_length': len(fallback)},
                     )
-                    return fallback
-                return ''
-            return repaired
+                    return fallback, {'fallback_applied': True, 'max_new_tokens_used': max_new_tokens}
+                return '', {'fallback_applied': False, 'max_new_tokens_used': max_new_tokens}
+            return repaired, {'fallback_applied': False, 'max_new_tokens_used': max_new_tokens}
         except Exception:
             logger.exception('vision_vlm_inference_failed', extra={'image_path': image_path})
-            return ''
+            return '', {'fallback_applied': False}
 
     @staticmethod
     def _decode_generated_tail(processor, generated, *, prompt_len: int) -> str:

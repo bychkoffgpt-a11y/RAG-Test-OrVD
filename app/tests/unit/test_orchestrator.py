@@ -112,6 +112,11 @@ class _VisionWithEvidence:
                 'ocr_text': 'Ошибка 500',
                 'summary': 'Найдена ошибка',
                 'confidence': 0.8,
+                'vlm_output_format': 'raw',
+                'vlm_json_parse_ok': False,
+                'vlm_raw_length': 128,
+                'vlm_fallback_applied': True,
+                'vlm_max_new_tokens_used': 384,
             }
         ]
 
@@ -186,6 +191,34 @@ def test_orchestrator_writes_trace_card():
     assert captured["card"]["stages"]["prompt"]["final_prompt"]
     assert captured["card"]["stages"]["retrieval"]["combined_sorted"]
     assert captured["card"]["aggregate_timings_sec"]["total"] >= 0
+
+
+def test_orchestrator_trace_card_contains_vision_vlm_diagnostics():
+    orch = RagOrchestrator()
+    orch.retriever = _RetrieverWithOneContext()
+    orch.llm = _LlmWithFixedAnswer()
+    orch.vision = _VisionWithEvidence()
+    captured = {}
+
+    class _TraceWriter:
+        def write(self, card):
+            captured["card"] = card
+            return {"json_path": "/tmp/a.json", "markdown_path": "/tmp/a.md"}
+
+    orch.trace_writer = _TraceWriter()
+    payload = AskRequest(
+        question='Проверь VLM trace',
+        top_k=8,
+        scope='all',
+        attachments=[AttachmentItem(image_path='/tmp/error.png')],
+    )
+    orch.answer(payload)
+    vision_item = captured["card"]["stages"]["vision"]["visual_evidence"][0]
+    assert vision_item["vlm_output_format"] == "raw"
+    assert vision_item["vlm_json_parse_ok"] is False
+    assert vision_item["vlm_raw_length"] == 128
+    assert vision_item["vlm_fallback_applied"] is True
+    assert vision_item["vlm_max_new_tokens_used"] == 384
 
 
 def test_orchestrator_returns_response_when_trace_dir_mkdir_permission_error(monkeypatch):
