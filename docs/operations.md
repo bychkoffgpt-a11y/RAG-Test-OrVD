@@ -573,6 +573,11 @@ scripts/profile_latency.sh \
   --compare-with data/rag_traces/profiles/baseline_ocr
 ```
 
+Примечание по лимитам VLM:
+- `VISION_RUNTIME_MAX_NEW_TOKENS` влияет в первую очередь на полноту распознавания в runtime (`visual_evidence[].ocr_text`) и напрямую может увеличивать `stage="vision"` latency.
+- `VISION_INGEST_MAX_NEW_TOKENS` применяется только в ingest, чтобы не раздувать длительность индексации при VLM-режиме.
+- `VISION_MODEL_MAX_NEW_TOKENS` остаётся fallback-значением для обратной совместимости.
+
 Артефакты:
 - `data/rag_traces/profiles/<name>/summary.json` — машинно-читаемый итог;
 - `data/rag_traces/profiles/<name>/summary.md` — p50/p95/max и дельты к baseline;

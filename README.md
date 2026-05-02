@@ -38,7 +38,9 @@
 - `VISION_MODEL_PATH=/models/vision/qwen3-vl-2b-instruct`
 - `VISION_MODEL_DEVICE=auto|cpu|cuda`
 - `VISION_MODEL_DTYPE=auto|float32|float16|bfloat16`
-- `VISION_MODEL_MAX_NEW_TOKENS=160`
+- `VISION_MODEL_MAX_NEW_TOKENS=384` — fallback-лимит, если mode-specific лимиты не заданы.
+- `VISION_RUNTIME_MAX_NEW_TOKENS=384` — лимит генерации VLM для runtime (`/ask`, `/v1/chat/completions`); повышает полноту `visual_evidence[].ocr_text`, но может увеличить latency stage `vision`.
+- `VISION_INGEST_MAX_NEW_TOKENS=256` — лимит генерации VLM для ingest (DOCX/PDF image extraction); помогает сдерживать latency индексации при сохранении информативного `ocr_text` в image-chunks.
 - `VISION_RUNTIME_TIMEOUT_SEC=120` — общий timeout runtime vision stage (`/ask`, `/v1/chat/completions`), `0` отключает ограничение.
 - `VISION_RUNTIME_MAX_IMAGES=3` — лимит количества изображений в одном runtime-запросе, `0` отключает ограничение.
 - `VISION_RUNTIME_MAX_IMAGE_PIXELS=4194304` — лимит пикселей (`width*height`) на одно runtime-изображение, `0` отключает ограничение.

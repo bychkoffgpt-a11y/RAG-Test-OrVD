@@ -118,7 +118,9 @@ VISION_OCR_SHOW_LOG=false
 VISION_MODEL_PATH=/models/vision/qwen3-vl-2b-instruct
 VISION_MODEL_DEVICE=auto
 VISION_MODEL_DTYPE=auto
-VISION_MODEL_MAX_NEW_TOKENS=160
+VISION_MODEL_MAX_NEW_TOKENS=384
+VISION_RUNTIME_MAX_NEW_TOKENS=384
+VISION_INGEST_MAX_NEW_TOKENS=256
 VISION_MODEL_PROMPT_RUNTIME=Опиши скриншот пользователя для службы поддержки. Если видны ошибки/коды/статусы — укажи их.
 VISION_MODEL_PROMPT_INGEST=Кратко опиши изображение для индексации документации. Укажи важные надписи, элементы интерфейса и возможные коды ошибок.
 ```
@@ -126,6 +128,8 @@ VISION_MODEL_PROMPT_INGEST=Кратко опиши изображение для
 Режимы:
 - `VISION_RUNTIME_MODE=ocr|vlm` — как анализировать вложения пользователя.
 - `VISION_INGEST_MODE=ocr|vlm` — как анализировать изображения, извлечённые из DOCX/PDF.
+- `VISION_RUNTIME_MAX_NEW_TOKENS` — runtime-лимит токенов VLM; увеличение улучшает полноту `visual_evidence[].ocr_text`, но повышает latency этапа `vision`.
+- `VISION_INGEST_MAX_NEW_TOKENS` — ingest-лимит токенов VLM; отдельный lower-bound уменьшает риск деградации времени индексации.
 - По умолчанию оба режима — `ocr` (обратная совместимость).
 
 ## 7) Что проверить перед запуском

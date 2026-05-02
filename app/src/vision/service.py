@@ -185,6 +185,7 @@ class VisionService:
                 image_path,
                 question=settings.vision_model_prompt_ingest,
                 mode=ingest_mode,
+                for_ingest=True,
                 deadline=None,
                 allow_raw_fallback=False,
             )
@@ -246,6 +247,7 @@ class VisionService:
             effective_image_path,
             question=self._build_task_instruction(question=question, task_type=task_type),
             mode=mode,
+            for_ingest=False,
             deadline=deadline,
             allow_raw_fallback=True,
         )
@@ -343,10 +345,27 @@ class VisionService:
         *,
         question: str,
         mode: str,
+        for_ingest: bool,
         deadline: float | None = None,
         allow_raw_fallback: bool = False,
     ) -> str:
         if mode == 'vlm':
+            if for_ingest:
+                try:
+                    return self._run_vlm(
+                        image_path,
+                        question=question,
+                        for_ingest=True,
+                        deadline=deadline,
+                        allow_raw_fallback=allow_raw_fallback,
+                    )
+                except TypeError:
+                    return self._run_vlm(
+                        image_path,
+                        question=question,
+                        deadline=deadline,
+                        allow_raw_fallback=allow_raw_fallback,
+                    )
             return self._run_vlm(
                 image_path,
                 question=question,
@@ -604,6 +623,7 @@ class VisionService:
         image_path: str,
         *,
         question: str,
+        for_ingest: bool = False,
         deadline: float | None,
         allow_raw_fallback: bool = False,
     ) -> str:
@@ -642,7 +662,13 @@ class VisionService:
             prompt_len = int(inputs['input_ids'].shape[1])
             if device == 'cuda':
                 inputs = {k: (v.to('cuda') if hasattr(v, 'to') else v) for k, v in inputs.items()}
-            generate_kwargs = {'max_new_tokens': settings.vision_model_max_new_tokens}
+            mode = self._resolve_mode(for_ingest=for_ingest)
+            max_new_tokens = (
+                int(settings.vision_ingest_max_new_tokens) if for_ingest else int(settings.vision_runtime_max_new_tokens)
+            )
+            if mode != 'vlm' or max_new_tokens <= 0:
+                max_new_tokens = int(settings.vision_model_max_new_tokens)
+            generate_kwargs = {'max_new_tokens': max_new_tokens}
             if deadline is not None:
                 remaining = deadline - time.perf_counter()
                 if remaining <= 0:

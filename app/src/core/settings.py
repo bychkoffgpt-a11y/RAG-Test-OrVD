@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     vision_model_path: str = '/models/vision/qwen3-vl-2b-instruct'
     vision_model_device: str = 'auto'
     vision_model_dtype: str = 'auto'
-    vision_model_max_new_tokens: int = 160
+    vision_model_max_new_tokens: int = 384
+    vision_runtime_max_new_tokens: int = 384
+    vision_ingest_max_new_tokens: int = 256
     vision_chart_top_k_points: int = 6
     vision_chart_runtime_max_tokens: int = 256
     vision_chart_downscale_max_width: int = 1280
