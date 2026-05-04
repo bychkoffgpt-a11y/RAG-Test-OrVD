@@ -1,4 +1,23 @@
+def _sanitize_context_text(context_text: str, *, has_runtime_images: bool) -> str:
+    """Убирает инжест-артефакты VLM-индексации, чтобы они не перехватывали ответ.
+
+    В ingestion image-чанки могут содержать служебный диалог
+    "Кратко опиши изображение для индексации" и блоки VLM/OCR.
+    Для обычных текстовых вопросов без приложенных пользователем
+    изображений такие фрагменты создают ложный приоритет ответа
+    про интерфейс и «скриншоты».
+    """
+    if has_runtime_images:
+        return context_text
+
+    lowered = context_text.lower()
+    if "кратко опиши изображение для индексации" in lowered:
+        return "[IMAGE] Служебный image-чанк документа (VLM/OCR), без релевантных формул для текущего вопроса."
+    return context_text
+
+
 def build_prompt(question: str, contexts: list[dict], visual_evidence: list[dict] | None = None) -> str:
+    has_runtime_images = bool(visual_evidence)
     context_lines = []
     for idx, item in enumerate(contexts, start=1):
         source_label = f"{item.get('source_type', 'unknown_source')}/{item.get('doc_id', 'unknown_doc')}"
@@ -10,6 +29,7 @@ def build_prompt(question: str, contexts: list[dict], visual_evidence: list[dict
         context_text = item.get('text')
         if context_text is None:
             context_text = item.get('text_preview', '')
+        context_text = _sanitize_context_text(context_text, has_runtime_images=has_runtime_images)
         context_lines.append(
             f"[{idx}] {context_text} (источник: {source_label}{page_suffix})"
         )
