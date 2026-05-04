@@ -56,3 +56,23 @@ def test_build_prompt_accepts_text_preview_fallback():
     assert "Почему не обработались записи по UHOP?" in prompt
     assert "Найдены ошибки валидации UHOP_BATCH" in prompt
     assert "источник: csv_ans_docs/DOC-UHOP-1" in prompt
+
+
+def test_build_prompt_sanitizes_ingest_image_chunk_without_runtime_attachments():
+    prompt = build_prompt(
+        "Дай формулу расчета аэродромного сбора",
+        [
+            {
+                "text": (
+                    "[IMAGE] Скриншот обработан. VLM:\nuser\n"
+                    "Кратко опиши изображение для индексации документации."
+                ),
+                "source_type": "csv_ans_docs",
+                "doc_id": "DOC-IMG-1",
+            }
+        ],
+        visual_evidence=[],
+    )
+
+    assert "Служебный image-чанк документа" in prompt
+    assert "Кратко опиши изображение для индексации" not in prompt
