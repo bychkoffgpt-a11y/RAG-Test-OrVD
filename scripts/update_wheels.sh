@@ -716,9 +716,13 @@ log "Проверяю доступность требуемых версий (в
 run_step "Preflight: проверка доступности версий и ссылок индекса" preflight_check_available_versions
 ok "Предварительная проверка зависимостей пройдена"
 
+req_without_torch_main="$(mktemp)"
+build_requirements_without_torch_stack "$req_file" "$req_without_torch_main"
+trap 'rm -f "$req_file" "$req_without_torch_main"' EXIT
+
 if [[ "$MODE" == "append" ]]; then
   log "Режим append: докачиваю недостающие wheels в $WHEELS_DIR..."
-  run_step "Append: загрузка wheels в существующий каталог" download_requirements_with_fallback "$req_file" "$WHEELS_DIR" "Append"
+  run_step "Append: загрузка wheels в существующий каталог" download_requirements_with_fallback "$req_without_torch_main" "$WHEELS_DIR" "Append"
 
   run_step "Append: докачка CUDA torch stack" download_cuda_torch_stack "$WHEELS_DIR" "Append (PyTorch CUDA index)"
 
@@ -740,10 +744,10 @@ backup_dir="${WHEELS_DIR}.bak.$(date +%Y%m%d%H%M%S)"
 cleanup_tmp() {
   rm -rf "$tmp_wheels_dir"
 }
-trap 'cleanup_tmp; rm -f "$req_file"' EXIT
+trap 'cleanup_tmp; rm -f "$req_file" "$req_without_torch_main"' EXIT
 
 log "Режим refresh: формирую новый wheelhouse во временном каталоге..."
-run_step "Refresh: загрузка wheels во временный каталог" download_requirements_with_fallback "$req_file" "$tmp_wheels_dir" "Refresh"
+run_step "Refresh: загрузка wheels во временный каталог" download_requirements_with_fallback "$req_without_torch_main" "$tmp_wheels_dir" "Refresh"
 
 run_step "Refresh: докачка CUDA torch stack" download_cuda_torch_stack "$tmp_wheels_dir" "Refresh (PyTorch CUDA index)"
 
