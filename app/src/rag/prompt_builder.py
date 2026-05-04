@@ -45,7 +45,7 @@ def build_prompt(question: str, contexts: list[dict], visual_evidence: list[dict
         )
 
     context_block = '\n'.join(context_lines)
-    evidence_block = '\n\n'.join(evidence_lines) if evidence_lines else 'Нет приложенных скриншотов.'
+    evidence_block = '\n\n'.join(evidence_lines)
 
     base_instructions = """
 Ты — помощник первой линии поддержки ЦСВ АНС.
@@ -64,15 +64,18 @@ def build_prompt(question: str, contexts: list[dict], visual_evidence: list[dict
     )
     instruction_block = "\n".join(filter(None, [base_instructions, vision_instructions]))
 
+    visual_section = (
+        f"\nСигналы со скриншотов:\n{evidence_block}\n"
+        if has_runtime_images
+        else ""
+    )
+
     return f"""
 {instruction_block}
 
 Вопрос:
 {question}
-
-Сигналы со скриншотов:
-{evidence_block}
-
+{visual_section}
 Контекст:
 {context_block}
 """.strip()
