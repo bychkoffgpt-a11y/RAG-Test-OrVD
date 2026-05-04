@@ -58,6 +58,7 @@ def test_build_prompt_accepts_text_preview_fallback():
     assert "Найдены ошибки валидации UHOP_BATCH" in prompt
     assert "источник: csv_ans_docs/DOC-UHOP-1" in prompt
     assert 'Если у пользователя есть скриншоты, обязательно учитывай OCR и сигналы из них.' not in prompt
+    assert 'Сигналы со скриншотов' not in prompt
 
 
 def test_build_prompt_sanitizes_ingest_image_chunk_without_runtime_attachments():
