@@ -46,16 +46,26 @@ def build_prompt(question: str, contexts: list[dict], visual_evidence: list[dict
 
     context_block = '\n'.join(context_lines)
     evidence_block = '\n\n'.join(evidence_lines) if evidence_lines else 'Нет приложенных скриншотов.'
-    return f"""
+
+    base_instructions = """
 Ты — помощник первой линии поддержки ЦСВ АНС.
 Отвечай только на основе контекста ниже.
 Язык ответа: только русский.
 Даже если источник или вопрос на другом языке, финальный ответ всегда формулируй по-русски.
 Если данных недостаточно — честно скажи об этом.
-Если у пользователя есть скриншоты, обязательно учитывай OCR и сигналы из них.
 Если отвечаешь нумерованным списком, выводи все пункты полностью, без обрыва слов и строк.
 Не добавляй в ответ блоки "Основание", "Источники", маркеры вида [1]/[2] или ссылки на документы.
 Источники будут добавлены системой автоматически.
+""".strip()
+    vision_instructions = (
+        "Если у пользователя есть скриншоты, обязательно учитывай OCR и сигналы из них."
+        if has_runtime_images
+        else ""
+    )
+    instruction_block = "\n".join(filter(None, [base_instructions, vision_instructions]))
+
+    return f"""
+{instruction_block}
 
 Вопрос:
 {question}
