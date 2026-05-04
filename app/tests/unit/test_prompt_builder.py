@@ -38,6 +38,7 @@ def test_build_prompt_includes_question_and_contexts():
     assert 'HTTP 500 Internal Server Error' in prompt
     assert 'выводи все пункты полностью' in prompt
     assert 'Не добавляй в ответ блоки "Основание"' in prompt
+    assert 'Если у пользователя есть скриншоты, обязательно учитывай OCR и сигналы из них.' in prompt
 
 
 def test_build_prompt_accepts_text_preview_fallback():
@@ -56,6 +57,7 @@ def test_build_prompt_accepts_text_preview_fallback():
     assert "Почему не обработались записи по UHOP?" in prompt
     assert "Найдены ошибки валидации UHOP_BATCH" in prompt
     assert "источник: csv_ans_docs/DOC-UHOP-1" in prompt
+    assert 'Если у пользователя есть скриншоты, обязательно учитывай OCR и сигналы из них.' not in prompt
 
 
 def test_build_prompt_sanitizes_ingest_image_chunk_without_runtime_attachments():
