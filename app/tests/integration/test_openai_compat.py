@@ -483,3 +483,69 @@ def test_chat_completions_applies_path_aliases(monkeypatch):
     assert response.status_code == 200
     assert dummy.last_payload is not None
     assert dummy.last_payload.attachments[0].image_path == '/data/runtime_uploads/abc.png'
+
+
+def test_chat_completions_no_chart_mode_without_attachments_for_weak_keywords(monkeypatch):
+    dummy = DummyOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    client = TestClient(app)
+
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [{'role': 'user', 'content': 'Проверь legend и axis в тексте письма'}],
+        'stream': False,
+    }
+    response = client.post('/v1/chat/completions', json=payload)
+    assert response.status_code == 200
+    assert dummy.last_payload is not None
+    assert 'Режим chart:' not in dummy.last_payload.question
+
+
+def test_chat_completions_chart_mode_with_explicit_graph_keyword_without_attachments(monkeypatch):
+    dummy = DummyOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    client = TestClient(app)
+
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [{'role': 'user', 'content': 'Опиши график и сравни пики'}],
+        'stream': False,
+    }
+    response = client.post('/v1/chat/completions', json=payload)
+    assert response.status_code == 200
+    assert dummy.last_payload is not None
+    assert 'Режим chart:' in dummy.last_payload.question
+
+
+def test_chat_completions_dedupes_duplicate_chart_section_headers(monkeypatch):
+    class DuplicatedChartAnswerOrchestrator(DummyOrchestrator):
+        def answer(self, ask_payload, max_tokens: int, temperature: float):
+            self.last_payload = ask_payload
+            return DummyAnswer(
+                answer=(
+                    "legend: Проверка реестра полетов\n"
+                    "axis:\n"
+                    "- Время\n"
+                    "points/trends:\n"
+                    "1. Апрель\n"
+                    "axis:\n"
+                    "- Время\n"
+                    "uncertainties:\n"
+                    "- возможно\n"
+                    "points/trends:\n"
+                    "2. Март\n"
+                )
+            )
+
+    monkeypatch.setattr(main_module, 'orch', DuplicatedChartAnswerOrchestrator())
+    client = TestClient(app)
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [{'role': 'user', 'content': 'Опиши graph'}],
+        'stream': False,
+    }
+    response = client.post('/v1/chat/completions', json=payload)
+    assert response.status_code == 200
+    content = response.json()['choices'][0]['message']['content']
+    assert content.lower().count('axis:') == 1
+    assert content.lower().count('points/trends:') == 1

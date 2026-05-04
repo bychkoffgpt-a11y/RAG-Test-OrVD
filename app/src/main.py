@@ -214,7 +214,10 @@ def _extract_attachments_from_message_content(content) -> list[AttachmentItem]:
     return _normalize_attachments_for_runtime(attachments)
 
 
-def _looks_like_chart_case(question: str, messages: list[dict]) -> bool:
+_CHART_SIGNAL_KEYWORDS = ('chart', 'graph', 'plot', 'diagram', 'legend', 'axis', 'диаграм', 'график', 'ось')
+
+
+def _collect_chart_signal_hits(question: str, messages: list[dict]) -> list[str]:
     signal_parts = [question or '']
     for message in messages:
         content = message.get('content')
@@ -225,7 +228,31 @@ def _looks_like_chart_case(question: str, messages: list[dict]) -> bool:
                 if isinstance(part, dict) and part.get('type') == 'text':
                     signal_parts.append(str(part.get('text', '')))
     signal = ' '.join(signal_parts).lower()
-    return any(k in signal for k in ('chart', 'graph', 'plot', 'diagram', 'legend', 'axis', 'диаграм', 'график', 'ось'))
+    return [keyword for keyword in _CHART_SIGNAL_KEYWORDS if keyword in signal]
+
+
+def _looks_like_chart_case(question: str, messages: list[dict], *, has_attachments: bool = False) -> bool:
+    signal_hits = _collect_chart_signal_hits(question, messages)
+    if not signal_hits:
+        return False
+    explicit_markers = {'chart', 'graph', 'plot', 'diagram', 'диаграм', 'график'}
+    has_explicit_chart_request = any(hit in explicit_markers for hit in signal_hits)
+    return bool(has_attachments or has_explicit_chart_request)
+
+
+def _dedupe_chart_sections(answer_text: str) -> str:
+    if not answer_text.strip():
+        return answer_text
+    deduped_lines: list[str] = []
+    seen: set[str] = set()
+    for line in answer_text.splitlines():
+        normalized = ' '.join(line.strip().lower().split())
+        if normalized in {'axis:', 'points/trends:', 'uncertainties:', 'legend:'}:
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+        deduped_lines.append(line)
+    return '\n'.join(deduped_lines).strip()
 
 
 def _apply_visual_answer_fallback(answer_text: str, visual_evidence: list[dict]) -> str:
@@ -312,7 +339,16 @@ def openai_compat(payload: dict, request: Request):
             logger.warning('openai_compat_question_missing')
             return JSONResponse(status_code=400, content={'detail': 'Не удалось извлечь текст вопроса из messages.'})
 
-    chart_mode = _looks_like_chart_case(question, messages)
+    chart_signal_hits = _collect_chart_signal_hits(question, messages)
+    chart_mode = _looks_like_chart_case(question, messages, has_attachments=bool(attachments))
+    logger.info(
+        'openai_compat_chart_mode_detected',
+        extra={
+            'chart_mode': chart_mode,
+            'chart_trigger_keywords': chart_signal_hits,
+            'has_attachments': bool(attachments),
+        },
+    )
     raw_max_tokens = payload.get('max_tokens')
     if raw_max_tokens is None:
         max_tokens = settings.vision_chart_runtime_max_tokens if chart_mode else 1024
@@ -359,6 +395,8 @@ def openai_compat(payload: dict, request: Request):
     is_stream = payload.get('stream') is True
 
     rendered_answer = _apply_visual_answer_fallback(answer.answer, [item.model_dump() for item in answer.visual_evidence])
+    if chart_mode:
+        rendered_answer = _dedupe_chart_sections(rendered_answer)
     if not is_vision_only:
         rendered_answer = append_grounding_markdown(rendered_answer, answer.sources, base_url=str(request.base_url))
         rendered_answer = append_sources_markdown(rendered_answer, answer.sources, base_url=str(request.base_url))
@@ -434,7 +472,17 @@ def vision_debug_recognize(payload: VisionDebugRequest):
         return JSONResponse(status_code=400, content={'detail': 'Поле prompt не должно быть пустым.'})
 
     messages = [{'role': 'user', 'content': [{'type': 'text', 'text': prompt}]}]
-    chart_mode = _looks_like_chart_case(prompt, messages)
+    chart_signal_hits = _collect_chart_signal_hits(prompt, messages)
+    chart_mode = _looks_like_chart_case(prompt, messages, has_attachments=bool(payload.attachments))
+    logger.info(
+        'vision_debug_chart_mode_detected',
+        extra={
+            'chart_mode': chart_mode,
+            'chart_trigger_keywords': chart_signal_hits,
+            'has_attachments': bool(payload.attachments),
+            'forced_task_type': payload.task_type,
+        },
+    )
     if chart_mode:
         prompt = (
             f'{prompt}\n\n'
