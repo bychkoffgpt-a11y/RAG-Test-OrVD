@@ -398,11 +398,23 @@ class VisionService:
     @staticmethod
     def _detect_task_type(*, question: str, image_path: str = '') -> str:
         signal = f'{question} {Path(image_path).name}'.lower()
+        trigger_hits: list[str] = []
+        task_type = 'text'
         if any(k in signal for k in ('chart', 'graph', 'plot', 'diagram', 'диаграм', 'график', 'legend', 'axis', 'ось')):
-            return 'chart'
-        if any(k in signal for k in ('sign', 'plate', 'notice', 'warning', 'знак', 'таблич', 'указател', 'предупрежден')):
-            return 'sign'
-        return 'text'
+            task_type = 'chart'
+            trigger_hits = [k for k in ('chart', 'graph', 'plot', 'diagram', 'диаграм', 'график', 'legend', 'axis', 'ось') if k in signal]
+        elif any(k in signal for k in ('sign', 'plate', 'notice', 'warning', 'знак', 'таблич', 'указател', 'предупрежден')):
+            task_type = 'sign'
+            trigger_hits = [k for k in ('sign', 'plate', 'notice', 'warning', 'знак', 'таблич', 'указател', 'предупрежден') if k in signal]
+        logger.info(
+            'vision_task_type_detected',
+            extra={
+                'task_type': task_type,
+                'task_type_trigger_keywords': trigger_hits,
+                'image_name': Path(image_path).name,
+            },
+        )
+        return task_type
 
     @staticmethod
     def _build_task_instruction(*, question: str, task_type: str) -> str:

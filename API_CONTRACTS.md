@@ -78,6 +78,7 @@ OpenAI-compatible endpoint.
 Поведение для chart-кейсов:
 - если `max_tokens` не передан и запрос распознан как chart/graph/diagram, используется сниженный бюджет генерации `VISION_CHART_RUNTIME_MAX_TOKENS` (по умолчанию `256`);
 - для chart-кейсов в orchestration передаётся инструкция формировать краткий структурированный ответ без лишних объяснений.
+- защита от ложных срабатываний: при отсутствии image-attachments chart-режим включается только при явном маркере запроса графика (`chart|graph|plot|diagram|диаграм|график`), одних `legend|axis|ось` недостаточно.
 
 Форматы image-вложений:
 - `file:///...` (локальный путь в контейнере `support-api`, с учётом alias из `VISION_ATTACHMENT_PATH_ALIASES`);
