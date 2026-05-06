@@ -211,6 +211,12 @@ docker compose up -d --build
 
 `scripts/update_wheels.sh` синхронизирует зависимости из `pyproject.toml` и docker-only пины (`opencv-contrib-python-headless`, `torch`, `torchvision`, `torchaudio`), включая докачку CUDA wheel из `PYTORCH_CUDA_INDEX_URL`, чтобы `support-api-base`/`ingest-base` не уходили в онлайн-индекс при полном wheelhouse.
 
+> **Примечание о двухфазной проверке wheelhouse.** `update_wheels.sh` использует разные стратегии для двух групп пакетов:
+> - Все зависимости **кроме torch-стека** скачиваются с явными ABI-флагами (`--python-version 311 --abi cp311`), чтобы wheel был совместим с Python в контейнере.
+> - **torch / torchvision / torchaudio** скачиваются без ABI-ограничений (`TORCH_TARGET_PLATFORM=auto`), потому что в Dockerfile они всё равно переустанавливаются из CUDA-индекса (`PYTORCH_CUDA_INDEX_URL`).
+>
+> `preflight_check.sh` зеркально воспроизводит эту логику: фаза A проверяет не-torch-пакеты с `--python-version <container>`, фаза B проверяет torch без ABI-ограничений. Это позволяет хосту с Python 3.12 корректно валидировать wheelhouse, содержащий cp311-колёса (например, `paddlepaddle`).
+
 ## Устойчивость сборки Python-зависимостей и офлайн-режим
 
 ### Вариант 1 — онлайн-сборка (по умолчанию)

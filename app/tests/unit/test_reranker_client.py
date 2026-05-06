@@ -186,14 +186,17 @@ def test_rerank_falls_back_to_cpu_on_cuda_error(monkeypatch, tmp_path):
     cpu_model = MagicMock()
     cpu_model.predict.return_value = [0.5]
 
-    call_count = {'n': 0}
-
     def fake_cross_encoder(path, local_files_only, device):
-        call_count['n'] += 1
         return gpu_model if device == 'cuda' else cpu_model
 
-    with patch('src.reranker.client.CrossEncoder', side_effect=fake_cross_encoder):
-        result = RerankerClient.rerank('вопрос', ['doc A'])
+    # _resolve_device('cuda') checks torch.cuda.is_available(); mock it so the test reaches
+    # the predict() call where the actual CUDA error and CPU fallback logic is exercised.
+    mock_torch = MagicMock()
+    mock_torch.cuda.is_available.return_value = True
+
+    with patch.dict('sys.modules', {'torch': mock_torch}):
+        with patch('src.reranker.client.CrossEncoder', side_effect=fake_cross_encoder):
+            result = RerankerClient.rerank('вопрос', ['doc A'])
 
     assert result == [0.5]
     assert RerankerClient._model is cpu_model
