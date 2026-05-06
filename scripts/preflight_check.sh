@@ -179,38 +179,75 @@ require_nonempty_wheelhouse() {
   local pyproject_file="$ROOT_DIR/app/pyproject.toml"
   [[ -f "$pyproject_file" ]] || fail "Файл не найден: $pyproject_file"
 
-  local tmp_req
+  local tmp_req tmp_req_notorch tmp_download_dir
   tmp_req="$(mktemp)"
-  local tmp_download_dir
+  tmp_req_notorch="$(mktemp)"
   tmp_download_dir="$(mktemp -d)"
-  trap 'rm -f "${tmp_req:-}"; rm -rf "${tmp_download_dir:-}"' RETURN
+  trap 'rm -f "${tmp_req:-}" "${tmp_req_notorch:-}"; rm -rf "${tmp_download_dir:-}"' RETURN
 
-  if ! python3 - "$pyproject_file" "$tmp_req" <<'PY'
-import pathlib
-import sys
-import tomllib
+  if ! python3 - "$pyproject_file" "$tmp_req" "$tmp_req_notorch" <<'PY'
+import pathlib, sys, tomllib
 
-pyproject_path = pathlib.Path(sys.argv[1])
-out_path = pathlib.Path(sys.argv[2])
-with pyproject_path.open("rb") as fh:
-    data = tomllib.load(fh)
-
+data = tomllib.load(pathlib.Path(sys.argv[1]).open("rb"))
 deps = list(data.get("project", {}).get("dependencies", []))
 build_reqs = list(data.get("build-system", {}).get("requires", []))
 all_reqs = deps + build_reqs
-out_path.write_text("\n".join(all_reqs) + "\n", encoding="utf-8")
+pathlib.Path(sys.argv[2]).write_text("\n".join(all_reqs) + "\n", encoding="utf-8")
+
+# Exclude torch stack — those wheels are downloaded without ABI constraints (for host Python)
+# to match the CUDA index install step in the Dockerfile, so they must be checked separately.
+torch_skip = ("torch==", "torchvision==", "torchaudio==")
+filtered = [r for r in all_reqs if not r.startswith(torch_skip)]
+pathlib.Path(sys.argv[3]).write_text("\n".join(filtered) + "\n", encoding="utf-8")
 PY
   then
     fail "Не удалось извлечь список зависимостей из $pyproject_file"
   fi
 
+  # Derive container Python version from Dockerfile (e.g. "FROM python:3.11-slim" → "3.11").
+  # Non-torch packages are always downloaded for the container Python, so the check must use
+  # the same version — otherwise cp311 wheels are invisible to a Python 3.12 host.
+  local target_python_version target_python_nodot
+  target_python_version="$(grep -m1 '^FROM python:' "$ROOT_DIR/app/Dockerfile" 2>/dev/null \
+    | grep -oP '(?<=FROM python:)\d+\.\d+')" || true
+  [[ -n "$target_python_version" ]] || target_python_version="3.11"
+  target_python_nodot="${target_python_version/./}"
+
+  # Phase A: non-torch packages — checked with container Python/ABI to catch cp311-only wheels.
   if ! python3 -m pip download \
     --disable-pip-version-check \
     --dest "$tmp_download_dir" \
     --no-index \
     --find-links "$dir" \
-    -r "$tmp_req" >/dev/null; then
-    fail "Wheelhouse неполный или несовместимый: pip не смог разрешить все прямые/транзитивные зависимости из $dir. Обновите app/wheels (см. scripts/update_wheels.sh)."
+    --python-version "$target_python_version" \
+    --abi "cp${target_python_nodot}" \
+    --platform manylinux2014_x86_64 \
+    --only-binary :all: \
+    -r "$tmp_req_notorch" >/dev/null; then
+    fail "Wheelhouse неполный или несовместимый: pip не смог разрешить зависимости (кроме torch-стека) из $dir. Обновите app/wheels (см. scripts/update_wheels.sh)."
+  fi
+
+  # Phase B: torch stack — checked without ABI constraints, mirroring update_wheels.sh behaviour
+  # where torch is downloaded in "auto" mode (host Python) from the CUDA index.
+  rm -rf "$tmp_download_dir"; tmp_download_dir="$(mktemp -d)"
+  local torch_ver torchvision_ver torchaudio_ver
+  torch_ver="$(grep -oP '(?<="torch==)[^"]+' "$pyproject_file" || true)"
+  torchvision_ver="$(grep -oP '(?<="torchvision==)[^"]+' "$pyproject_file" || true)"
+  torchaudio_ver="$(grep -oP '(?<="torchaudio==)[^"]+' "$pyproject_file" || true)"
+
+  if [[ -n "$torch_ver" ]]; then
+    local torch_args=("torch==${torch_ver}")
+    [[ -n "$torchvision_ver" ]] && torch_args+=("torchvision==${torchvision_ver}")
+    [[ -n "$torchaudio_ver" ]]  && torch_args+=("torchaudio==${torchaudio_ver}")
+    if ! python3 -m pip download \
+      --disable-pip-version-check \
+      --dest "$tmp_download_dir" \
+      --no-index \
+      --find-links "$dir" \
+      --only-binary :all: \
+      "${torch_args[@]}" >/dev/null; then
+      fail "Wheelhouse неполный: pip не смог найти torch==${torch_ver} в $dir. Обновите app/wheels (см. scripts/update_wheels.sh)."
+    fi
   fi
 
   ok "Найдены wheel-пакеты для офлайн-сборки: $dir"
