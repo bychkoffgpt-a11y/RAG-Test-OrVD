@@ -220,6 +220,10 @@ _CHART_SIGNAL_KEYWORDS = ('chart', 'graph', 'plot', 'diagram', 'legend', 'axis',
 def _collect_chart_signal_hits(question: str, messages: list[dict]) -> list[str]:
     signal_parts = [question or '']
     for message in messages:
+        # Scan only user messages — assistant responses may contain chart keywords
+        # from a previous false-positive chart_mode response, creating a feedback loop.
+        if message.get('role') != 'user':
+            continue
         content = message.get('content')
         if isinstance(content, str):
             signal_parts.append(content)
