@@ -124,6 +124,26 @@ class RagOrchestrator:
         return '\n'.join(lines).strip()
 
     @staticmethod
+    def _build_retrieval_question(question: str, visual_evidence: list[dict]) -> tuple[str, bool]:
+        """Дополняет вопрос OCR-текстом изображений для улучшения vector retrieval.
+
+        Возвращает (augmented_question, ocr_augmented).
+        Если OCR-текста нет — возвращает оригинальный вопрос без изменений.
+        """
+        if not visual_evidence:
+            return question, False
+
+        ocr_parts = [
+            item.get('ocr_text', '').strip()
+            for item in visual_evidence
+            if item.get('ocr_text', '').strip()
+        ]
+        if not ocr_parts:
+            return question, False
+
+        return question + '\n' + '\n'.join(ocr_parts), True
+
+    @staticmethod
     def _apply_scope_all_domain_bias(contexts: list[dict], payload: AskRequest) -> tuple[list[dict], bool]:
         if payload.scope != 'all' or not payload.attachments:
             return contexts, False
@@ -212,10 +232,22 @@ class RagOrchestrator:
         }
         trace_card['aggregate_timings_sec']['vision'] = round(vision_duration, 6)
 
-        contexts, retrieval_trace = self.retriever.retrieve_with_trace(payload.question, payload.top_k, payload.scope)
+        retrieval_question, ocr_augmented = self._build_retrieval_question(payload.question, visual_evidence)
+        logger.info(
+            'rag_retrieval_question',
+            extra={
+                'endpoint': endpoint,
+                'ocr_augmented': ocr_augmented,
+                'retrieval_question_length': len(retrieval_question),
+            },
+        )
+        contexts, retrieval_trace = self.retriever.retrieve_with_trace(retrieval_question, payload.top_k, payload.scope)
         contexts, scope_bias_applied = self._apply_scope_all_domain_bias(contexts, payload)
         retrieval_trace['contexts_used_for_prompt'] = contexts
         retrieval_trace.setdefault('post_processing', {})['scope_all_csv_ans_docs_soft_bias_applied'] = scope_bias_applied
+        retrieval_trace['post_processing']['ocr_augmented_retrieval'] = ocr_augmented
+        if ocr_augmented:
+            retrieval_trace['post_processing']['retrieval_question'] = retrieval_question
         retrieve_duration = retrieval_trace.get('timings_sec', {}).get('total', 0.0)
         self._observe_stage(endpoint=endpoint, stage='retrieval', duration_sec=retrieve_duration, payload=payload)
         logger.info(

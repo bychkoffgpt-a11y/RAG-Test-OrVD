@@ -11,11 +11,19 @@
 ## 2) Основной поток данных
 1. Документы поступают в `data/inbox/<source_type>`.
 2. `pipeline_a`/`pipeline_b` парсят DOCX/PDF/изображения, выполняют chunking и дедупликацию.
-3. Эмбеддинги чанков пишутся в Qdrant (`csv_ans_docs`, `internal_regulations`), метаданные — в PostgreSQL.
-4. Пользовательский вопрос приходит в `/ask` или `/v1/chat/completions`.
-5. Retriever выбирает кандидатов, reranker (если включён) уточняет ранжирование.
-6. Prompt builder формирует контекст, LLM генерирует ответ.
-7. API возвращает answer + sources (+ images/visual_evidence при мультимодальности).
+3. Эмбеддинги чанков (включая OCR-текст изображений из документов) пишутся в Qdrant
+   (`csv_ans_docs`, `internal_regulations`), метаданные — в PostgreSQL.
+4. Пользовательский вопрос (+ опциональные вложения) приходит в `/ask` или `/v1/chat/completions`.
+5. Если переданы изображения: VisionService выполняет OCR/VLM-анализ →
+   извлечённый `ocr_text` **дополняет вопрос** для построения embedding-вектора
+   (OCR-augmented retrieval). Это позволяет находить документы, релевантные
+   содержимому скриншота, а не только тексту вопроса.
+6. Retriever выбирает кандидатов по OCR-augmented вектору, reranker (если включён)
+   уточняет ранжирование.
+7. Prompt builder формирует контекст: retrieved chunks + секция `visual_evidence`
+   с OCR-текстом и summary изображений.
+8. LLM генерирует ответ, учитывая и документы, и содержимое скриншота.
+9. API возвращает answer + sources с `download_url` (+ images/visual_evidence при мультимодальности).
 
 ## 3) Ключевые сервисы и модули
 - `support-api` (`app/src/main.py`): HTTP API, совместимость с OpenAI форматом, middleware/метрики.

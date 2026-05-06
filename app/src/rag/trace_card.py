@@ -95,11 +95,18 @@ class TraceCardWriter:
 
         lines.append('## Retrieval and rerank')
         retrieval = stages.get('retrieval', {})
+        retrieval_post = retrieval.get('post_processing', {})
+        ocr_augmented = retrieval_post.get('ocr_augmented_retrieval', False)
         lines.append(f"- candidate_limit: `{retrieval.get('query', {}).get('candidate_limit', '')}`")
         lines.append(f"- deduped_count: `{retrieval.get('deduped_count', '')}`")
         lines.append(f"- filtered_count: `{retrieval.get('filtered_count', '')}`")
         lines.append(f"- returned_count: `{retrieval.get('returned_count', '')}`")
         lines.append(f"- reranker_applied: `{retrieval.get('reranker', {}).get('applied', False)}`")
+        lines.append(f"- ocr_augmented_retrieval: `{ocr_augmented}`")
+        if ocr_augmented:
+            retrieval_q = retrieval_post.get('retrieval_question', '')
+            preview = retrieval_q[:300] + ('...' if len(retrieval_q) > 300 else '')
+            lines.append(f"- retrieval_question_preview: `{preview}`")
         lines.append('')
 
         lines.append('## Prompt and answer')
