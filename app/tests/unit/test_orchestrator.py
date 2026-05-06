@@ -368,3 +368,140 @@ def test_orchestrator_render_visual_answer_hides_raw_vlm_json_tail():
 
     assert '{"visible_facts"' not in answer
     assert 'Факты: A' in answer
+
+
+def test_orchestrator_calls_llm_when_no_contexts_but_visual_evidence_present():
+    """contexts=[] но visual_evidence есть → early-return НЕ срабатывает, LLM вызывается."""
+    orch = RagOrchestrator()
+    orch.retriever = _NoContextRetriever()
+    orch.vision = _VisionWithEvidence()
+
+    llm_prompts: list[str] = []
+
+    class _LlmTrackingCalls:
+        def generate(self, prompt, max_tokens=512, temperature=0.1, trace=None):
+            llm_prompts.append(prompt)
+            return 'Ответ на основе скриншота'
+
+    orch.llm = _LlmTrackingCalls()
+
+    payload = AskRequest(
+        question='Что на скриншоте?',
+        top_k=8,
+        scope='all',
+        attachments=[AttachmentItem(image_path='/tmp/screen.png')],
+    )
+    response = orch.answer(payload)
+
+    assert len(llm_prompts) == 1, 'LLM должен быть вызван даже при пустом контексте'
+    assert response.answer == 'Ответ на основе скриншота'
+    assert response.visual_evidence
+
+
+class _CapturingRetriever:
+    def __init__(self):
+        self.received_questions: list[str] = []
+
+    def retrieve_with_trace(self, question, top_k, scope):
+        self.received_questions.append(question)
+        return [], {
+            'query': {'question': question, 'scope': scope, 'top_k': top_k, 'candidate_limit': top_k},
+            'timings_sec': {'embedding': 0.0, 'retrieval': 0.0, 'rerank': 0.0, 'total': 0.0},
+            'raw_by_collection': {},
+            'combined_sorted': [],
+            'deduped_count': 0,
+            'filtered_count': 0,
+            'returned_count': 0,
+            'reranker': {'enabled': False, 'applied': False, 'min_score': 0.25},
+            'contexts_used_for_prompt': [],
+        }
+
+
+def test_orchestrator_augments_retrieval_question_with_ocr_text():
+    """Если у запроса есть вложения с OCR-текстом, retriever получает question + OCR."""
+    orch = RagOrchestrator()
+    capturing_retriever = _CapturingRetriever()
+    orch.retriever = capturing_retriever
+    orch.llm = _LlmWithFixedAnswer()
+    orch.vision = _VisionWithEvidence()
+
+    payload = AskRequest(
+        question='Что за ошибка?',
+        top_k=8,
+        scope='all',
+        attachments=[AttachmentItem(image_path='/tmp/screen.png')],
+    )
+    orch.answer(payload)
+
+    assert len(capturing_retriever.received_questions) == 1
+    retrieval_q = capturing_retriever.received_questions[0]
+    assert 'Что за ошибка?' in retrieval_q
+    assert 'Ошибка 500' in retrieval_q  # OCR из _VisionWithEvidence
+
+
+def test_orchestrator_does_not_augment_retrieval_when_no_attachments():
+    """Без вложений retriever получает оригинальный вопрос без изменений."""
+    orch = RagOrchestrator()
+    capturing_retriever = _CapturingRetriever()
+    orch.retriever = capturing_retriever
+    orch.llm = _LlmWithFixedAnswer()
+    orch.vision = _VisionMustNotBeCalled()
+
+    payload = AskRequest(question='Как подать заявку?', top_k=8, scope='all')
+    orch.answer(payload)
+
+    assert capturing_retriever.received_questions[0] == 'Как подать заявку?'
+
+
+def test_orchestrator_does_not_augment_when_ocr_text_is_empty():
+    """Если VisionService вернул evidence без OCR-текста, вопрос не изменяется."""
+    class _VisionWithEmptyOcr:
+        def analyze_attachments(self, attachments, question):
+            return [{'image_path': '/tmp/img.png', 'ocr_text': '', 'summary': 'Изображение', 'confidence': 0.5}]
+
+    orch = RagOrchestrator()
+    capturing_retriever = _CapturingRetriever()
+    orch.retriever = capturing_retriever
+    orch.llm = _LlmWithFixedAnswer()
+    orch.vision = _VisionWithEmptyOcr()
+
+    payload = AskRequest(
+        question='Проверь скриншот',
+        top_k=8,
+        scope='all',
+        attachments=[AttachmentItem(image_path='/tmp/img.png')],
+    )
+    orch.answer(payload)
+
+    assert capturing_retriever.received_questions[0] == 'Проверь скриншот'
+
+
+def test_orchestrator_augmentation_recorded_in_trace():
+    """OCR-augmentation отражается в trace_card (post_processing.ocr_augmented_retrieval)."""
+    orch = RagOrchestrator()
+    capturing_retriever = _CapturingRetriever()
+    orch.retriever = capturing_retriever
+    orch.llm = _LlmWithFixedAnswer()
+    orch.vision = _VisionWithEvidence()
+    captured: dict = {}
+
+    class _TraceWriter:
+        def write(self, card):
+            captured['card'] = card
+            return {'json_path': '/tmp/a.json', 'markdown_path': '/tmp/a.md'}
+
+    orch.trace_writer = _TraceWriter()
+
+    payload = AskRequest(
+        question='Что за ошибка?',
+        top_k=8,
+        scope='all',
+        attachments=[AttachmentItem(image_path='/tmp/screen.png')],
+    )
+    orch.answer(payload)
+
+    post = captured['card']['stages']['retrieval']['post_processing']
+    assert post['ocr_augmented_retrieval'] is True
+    assert 'retrieval_question' in post
+    assert 'Что за ошибка?' in post['retrieval_question']
+    assert 'Ошибка 500' in post['retrieval_question']

@@ -553,3 +553,83 @@ def test_chat_completions_dedupes_duplicate_chart_section_headers(monkeypatch):
     content = response.json()['choices'][0]['message']['content']
     assert content.lower().count('axis:') == 1
     assert content.lower().count('points/trends:') == 1
+
+
+def test_chat_completions_sources_json_field_present_for_text_query(monkeypatch):
+    """sources[] присутствует в JSON-ответе для text-only запроса."""
+    dummy = DummyOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    client = TestClient(app)
+
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [{'role': 'user', 'content': 'Как подать заявку на доступ?'}],
+        'stream': False,
+    }
+    response = client.post('/v1/chat/completions', json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert 'sources' in data
+    assert isinstance(data['sources'], list)
+    assert len(data['sources']) > 0
+    assert data['sources'][0]['doc_id'] == 'doc-1'
+
+
+def test_chat_completions_vision_only_suppresses_source_markdown_in_content(monkeypatch):
+    """Image-only запрос: markdown-ссылки на источники НЕ добавляются в текст ответа,
+    но поле sources[] присутствует в JSON."""
+    dummy = DummyOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    client = TestClient(app)
+
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [
+            {
+                'role': 'user',
+                'content': [
+                    {'type': 'image_url', 'image_url': {'url': 'file:///tmp/screen-vision-only.png'}},
+                ],
+            }
+        ],
+        'stream': False,
+    }
+    response = client.post('/v1/chat/completions', json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    content = data['choices'][0]['message']['content']
+    assert 'Основание:' not in content
+    assert 'Источники для скачивания' not in content
+    assert isinstance(data['sources'], list)
+    assert len(data['sources']) > 0
+
+
+def test_chat_completions_text_and_image_sources_appended_to_answer_content(monkeypatch):
+    """Текст + изображение (is_vision_only=False): markdown-ссылки на источники
+    добавляются в тело ответа."""
+    dummy = DummyOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
+    client = TestClient(app)
+
+    payload = {
+        'model': 'local-rag-model',
+        'messages': [
+            {
+                'role': 'user',
+                'content': [
+                    {'type': 'text', 'text': 'Что за ошибка на скриншоте?'},
+                    {'type': 'image_url', 'image_url': {'url': 'file:///tmp/screen-with-text.png'}},
+                ],
+            }
+        ],
+        'stream': False,
+    }
+    response = client.post('/v1/chat/completions', json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    content = data['choices'][0]['message']['content']
+    assert 'Основание:' in content or 'Источники для скачивания' in content
+    assert '/sources/csv_ans_docs/doc-1/download' in content
