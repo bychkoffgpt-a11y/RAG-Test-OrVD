@@ -235,7 +235,8 @@ def test_chat_completions_stream_returns_sse_chunks(monkeypatch):
 
 
 def test_chat_completions_uses_last_user_message(monkeypatch):
-    monkeypatch.setattr(main_module, 'orch', DummyOrchestrator())
+    dummy = DummyOrchestrator()
+    monkeypatch.setattr(main_module, 'orch', dummy)
     client = TestClient(app)
 
     payload = {
@@ -253,6 +254,9 @@ def test_chat_completions_uses_last_user_message(monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert 'Тестовый ответ' in data['choices'][0]['message']['content']
+    # Verify the correct question text was extracted from the user message
+    assert dummy.last_payload is not None
+    assert dummy.last_payload.question == 'Первый вопрос'
 
 
 def test_chat_completions_accepts_null_generation_params(monkeypatch):
