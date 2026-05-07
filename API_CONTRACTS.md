@@ -49,9 +49,11 @@
       "image_path": "/data/screenshot.png",
       "source_url": "https://example.local/screenshot.png?token=abc",
       "ocr_text": "...",
+      "display_text": "...",
       "summary": "...",
       "confidence": 0.91,
-      "task_type": "text"
+      "task_type": "text",
+      "visible_facts": ["факт 1", "факт 2"]
     }
   ]
 }
@@ -99,6 +101,52 @@ OpenAI-compatible endpoint.
 
 Если текст вопроса отсутствует, но есть attachment, используется fallback-вопрос:
 - `"Опишите, что видно на скриншоте, и предложите решение проблемы."`
+
+---
+
+### `POST /ocr/upload`
+Загрузка файла (изображение, PDF, DOCX) и извлечение текста без запуска RAG-пайплайна.
+
+**Request:** `multipart/form-data`, поле `file`.  
+**Поддерживаемые форматы:** `.png`, `.jpg`, `.jpeg`, `.bmp`, `.tif`, `.tiff`, `.webp`, `.pdf`, `.docx`, `.doc`.
+
+**Response (`OcrUploadResponse`):**
+```json
+{
+  "filename": "order.pdf",
+  "file_type": "pdf",
+  "page_count": 3,
+  "full_text": "...",
+  "pages": [
+    { "page_number": 1, "text": "...", "confidence": 0.82 }
+  ]
+}
+```
+
+---
+
+### `GET /v1/models` — модель `doc-recognizer`
+Специальная модель для режима распознавания документов в Open WebUI.
+
+**Использование:** выбрать `doc-recognizer` в дропдауне модели Open WebUI, затем отправить изображение документа в чат.
+
+**Поведение `/v1/chat/completions` при `model=doc-recognizer`:**
+- VLM обрабатывает вложенные изображения и возвращает извлечённый текст в читаемом виде (оригинальный регистр, строки разделены переносом);
+- RAG retrieval не запускается; LLM-генерация не используется;
+- PDF и DOCX следует загружать через `POST /ocr/upload`; в чате поддерживаются только изображения.
+
+**Response:** стандартный формат `chat.completion` с дополнительными полями:
+```json
+{
+  "choices": [{ "message": { "role": "assistant", "content": "Извлечённый текст..." } }],
+  "sources": [],
+  "images": [],
+  "visual_evidence": []
+}
+```
+
+**Настройка производительности:**
+- `VISION_RUNTIME_MAX_NEW_TOKENS` — лимит токенов VLM. Для плотных документов (300+ слов) рекомендуется `>= 2048`; при меньшем значении JSON усекается и в ответе появляются артефакты.
 
 ---
 
@@ -199,3 +247,14 @@ OpenAI-compatible endpoint.
 - `visual_evidence[].summary` remains a diagnostic field for OCR/VLM processing.
 - By default, `summary` is **not** appended to the final `answer` text.
 - Backward compatibility flag: `VISION_INCLUDE_SUMMARY_IN_ANSWER=false` (default).
+
+## Поля `VisionEvidenceItem`
+
+| Поле | Тип | Назначение |
+|------|-----|-----------|
+| `ocr_text` | `str` | Нормализованный для embedding текст (lowercase, разделитель `\|`). Используется при индексации и RAG retrieval. |
+| `display_text` | `str` | Человекочитаемый текст в оригинальном регистре для отображения в UI. Заполняется в VLM-режиме из `visible_facts` VLM-ответа. |
+| `visible_facts` | `list[str]` | Список фактов из успешно разобранного VLM JSON. Пустой список при OCR-режиме или при провале парсинга. |
+| `summary` | `str` | Короткое описание изображения (диагностическое поле). |
+| `confidence` | `float` | Оценка уверенности VLM/OCR в диапазоне `[0, 1]`. |
+| `task_type` | `str` | Тип задачи: `text \| chart \| sign`. |
