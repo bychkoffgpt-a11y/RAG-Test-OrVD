@@ -302,7 +302,7 @@ def _handle_ocr_mode(attachments: list, *, is_stream: bool):
         parts = []
         for i, e in enumerate(evidence, 1):
             if isinstance(e, VisionEvidenceItem):
-                text = (e.ocr_text or '').strip()
+                text = (e.display_text or e.ocr_text or '').strip()
             else:
                 text = str((e or {}).get('ocr_text') or '').strip()
             if text:
@@ -335,6 +335,9 @@ def _handle_ocr_mode(attachments: list, *, is_stream: bool):
         'created': created_ts,
         'model': 'doc-recognizer',
         'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': ocr_text}, 'finish_reason': 'stop'}],
+        'sources': [],
+        'images': [],
+        'visual_evidence': [],
     }
 
 

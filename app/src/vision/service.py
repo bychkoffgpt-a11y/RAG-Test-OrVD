@@ -265,6 +265,7 @@ class VisionService:
         vlm_raw_length: int | None = None
         vlm_fallback_applied: bool | None = None
         vlm_max_new_tokens_used: int | None = None
+        parsed: VlmStructuredResponse | None = None
         if mode == 'ocr':
             ocr_text = extracted_text
         else:
@@ -289,6 +290,12 @@ class VisionService:
             if vlm_output_format == 'raw' and ocr_text.strip():
                 ocr_text = f'{_VLM_RAW_QUALITY_MARKER} {ocr_text}'.strip()
 
+        if mode == 'ocr':
+            display_text = extracted_text
+        else:
+            display_facts = self._extract_display_facts(extracted_text)
+            display_text = '\n'.join(display_facts)
+
         logger.info(
             'vision_image_processed',
             extra={
@@ -308,6 +315,8 @@ class VisionService:
             summary=summary,
             confidence=confidence,
             task_type=task_type,
+            visible_facts=parsed.visible_facts if parsed is not None else [],
+            display_text=display_text,
             vlm_output_format=vlm_output_format,
             vlm_diagnostics=vlm_diagnostics,
             vlm_json_parse_ok=vlm_json_parse_ok,
@@ -1039,6 +1048,60 @@ class VisionService:
         if len(ocr_text) < 120:
             return 0.65
         return 0.82
+    @staticmethod
+    def _extract_display_facts(text: str) -> list[str]:
+        """Return original-case facts from VLM output for human-readable display.
+
+        Bypasses Pydantic schema validation so it works even when the VLM output
+        failed VlmStructuredResponse checks (e.g. duplicate facts, confidence mismatch).
+        Recursively unwraps the structured_parse_failed fallback payload to reach
+        the raw repaired VLM output stored in uncertain_facts[0].
+        """
+        cleaned = VisionService._strip_markdown_json_wrapper(text)
+        candidates = [cleaned]
+        obj = VisionService._extract_first_balanced_json_object(cleaned)
+        if obj and obj != cleaned:
+            candidates.append(obj)
+        for candidate in candidates:
+            try:
+                data = json.loads(candidate)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            vf = [f for f in (data.get('visible_facts') or []) if isinstance(f, str) and f.strip()]
+            if vf:
+                return vf
+            for fragment in (data.get('uncertain_facts') or []):
+                if not isinstance(fragment, str) or fragment == 'structured_parse_failed':
+                    continue
+                nested = VisionService._extract_display_facts(fragment)
+                if nested:
+                    return nested
+                # Truncated JSON: extract whatever complete quoted strings are present
+                if len(fragment.strip()) > 30:
+                    partial = VisionService._extract_quoted_strings_from_fragment(fragment)
+                    if partial:
+                        return partial
+        return []
+
+    @staticmethod
+    def _extract_quoted_strings_from_fragment(text: str) -> list[str]:
+        """Extract complete quoted string values from a potentially truncated JSON fragment."""
+        _SCHEMA_KEYS = {
+            'visible_facts', 'uncertain_facts', 'not_visible', 'confidence',
+            'structured_parse_failed', 'vlm_empty_output',
+        }
+        cleaned = VisionService._strip_markdown_json_wrapper(text)
+        results: list[str] = []
+        seen: set[str] = set()
+        for m in re.finditer(r'"((?:[^"\\]|\\.)+)"', cleaned):
+            val = m.group(1).replace('\\"', '"').strip()
+            if len(val) > 15 and val not in _SCHEMA_KEYS and val not in seen:
+                seen.add(val)
+                results.append(val)
+        return results
+
     @staticmethod
     def _build_structured_parse_failed_payload(raw_output: str) -> str:
         raw_fragment = VisionService._sanitize_vlm_fallback_text(raw_output)

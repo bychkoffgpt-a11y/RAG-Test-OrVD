@@ -16,6 +16,8 @@ class VisionEvidenceItem(BaseModel):
     summary: str = ''
     confidence: float = 0.0
     task_type: str = 'text'
+    visible_facts: list[str] = Field(default_factory=list)
+    display_text: str = ''
     vlm_output_format: Literal['json', 'raw'] | None = None
     vlm_diagnostics: dict[str, str] | None = None
     vlm_json_parse_ok: bool | None = None
