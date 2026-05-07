@@ -16,8 +16,9 @@ from pydantic import ValidationError
 from src.api.ask import router as ask_router
 from src.api.ingest_a import router as ingest_a_router
 from src.api.ingest_b import router as ingest_b_router
+from src.api.ocr import router as ocr_router
 from src.api.sources import router as sources_router
-from src.api.schemas import AskRequest, AttachmentItem, VisionDebugRequest, VisionDebugResponse
+from src.api.schemas import AskRequest, AttachmentItem, VisionDebugRequest, VisionDebugResponse, VisionEvidenceItem
 from src.core.logging import configure_logging
 from src.core.request_context import reset_request_id, set_request_id
 from src.core.settings import settings
@@ -33,6 +34,7 @@ app = FastAPI(title='ЦСВ АНС Support API', version='0.1.0')
 app.include_router(ask_router)
 app.include_router(ingest_a_router)
 app.include_router(ingest_b_router)
+app.include_router(ocr_router)
 app.include_router(sources_router)
 
 orch = RagOrchestrator()
@@ -286,6 +288,56 @@ async def metrics_middleware(request: Request, call_next):
         reset_request_id(token)
 
 
+def _handle_ocr_mode(attachments: list, *, is_stream: bool):
+    if not attachments:
+        ocr_text = (
+            'Прикрепите изображение для распознавания текста.\n'
+            'Для PDF и DOCX используйте endpoint `POST /ocr/upload`.'
+        )
+    else:
+        normalized = _normalize_attachments_for_runtime(attachments)
+        evidence = orch.vision.analyze_attachments(
+            normalized, 'Извлеки весь текст', forced_task_type='text'
+        )
+        parts = []
+        for i, e in enumerate(evidence, 1):
+            if isinstance(e, VisionEvidenceItem):
+                text = (e.ocr_text or '').strip()
+            else:
+                text = str((e or {}).get('ocr_text') or '').strip()
+            if text:
+                parts.append(f'**Изображение {i}**\n\n{text}' if len(evidence) > 1 else text)
+        ocr_text = '\n\n---\n\n'.join(parts) or '(Текст не обнаружен)'
+
+    completion_id = f'chatcmpl-{uuid.uuid4().hex[:12]}'
+    created_ts = int(time.time())
+
+    if is_stream:
+        def _ocr_stream():
+            first = {'id': completion_id, 'object': 'chat.completion.chunk', 'created': created_ts,
+                     'model': 'doc-recognizer',
+                     'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]}
+            yield f'data: {json.dumps(first, ensure_ascii=False)}\n\n'
+            chunk = {'id': completion_id, 'object': 'chat.completion.chunk', 'created': created_ts,
+                     'model': 'doc-recognizer',
+                     'choices': [{'index': 0, 'delta': {'content': ocr_text}, 'finish_reason': None}]}
+            yield f'data: {json.dumps(chunk, ensure_ascii=False)}\n\n'
+            final = {'id': completion_id, 'object': 'chat.completion.chunk', 'created': created_ts,
+                     'model': 'doc-recognizer',
+                     'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]}
+            yield f'data: {json.dumps(final, ensure_ascii=False)}\n\n'
+            yield 'data: [DONE]\n\n'
+        return StreamingResponse(_ocr_stream(), media_type='text/event-stream')
+
+    return {
+        'id': completion_id,
+        'object': 'chat.completion',
+        'created': created_ts,
+        'model': 'doc-recognizer',
+        'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': ocr_text}, 'finish_reason': 'stop'}],
+    }
+
+
 @app.get('/health')
 def health() -> dict:
     return {'status': 'ok'}
@@ -333,6 +385,9 @@ def openai_compat(payload: dict, request: Request):
             if extracted_attachments:
                 attachments = extracted_attachments
             break
+
+    if payload.get('model') == 'doc-recognizer':
+        return _handle_ocr_mode(attachments, is_stream=payload.get('stream') is True)
 
     is_vision_only = bool(attachments) and not question.strip()
     if not question.strip():
@@ -526,12 +581,8 @@ def openai_models():
     return {
         'object': 'list',
         'data': [
-            {
-                'id': 'local-rag-model',
-                'object': 'model',
-                'created': 0,
-                'owned_by': 'local',
-            }
+            {'id': 'local-rag-model', 'object': 'model', 'created': 0, 'owned_by': 'local'},
+            {'id': 'doc-recognizer',  'object': 'model', 'created': 0, 'owned_by': 'local'},
         ],
     }
 
